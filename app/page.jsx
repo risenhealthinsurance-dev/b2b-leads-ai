@@ -220,8 +220,43 @@ export default function Home() {
                       <span className="mr-2">⭐</span>
                       <span>{lead.rating || "N/A"}</span>
                     </div>
+                    <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-700 mb-4">
+                      <h4 className="font-bold text-gray-800 mb-2">Technical Signals</h4>
+                      {lead.website_inspection?.status === "available" ? (
+                        <>
+                          <p><span className="font-semibold">Site:</span> {lead.website_inspection.https ? "HTTPS" : "Not HTTPS"} · {lead.website_inspection.response_time_ms ?? "N/A"} ms</p>
+                          <p><span className="font-semibold">Payments:</span> {lead.website_inspection.payment_signals?.join(", ") || "None detected"}</p>
+                          <p><span className="font-semibold">Tracking:</span> {lead.website_inspection.tracking_pixels?.join(", ") || "None detected"}</p>
+                          <p><span className="font-semibold">SEO:</span> {lead.website_inspection.page_title ? "Title found" : "Missing title"} · {lead.website_inspection.meta_description ? "Description found" : "Missing description"}</p>
+                        </>
+                      ) : (
+                        <p>{lead.website_inspection?.reason || "Website could not be inspected"}</p>
+                      )}
+                    </div>
+                    <div className="space-y-4 border-t border-gray-100 pt-4 mt-4">
+                      <section>
+                        <h4 className="text-sm font-bold text-blue-700 mb-2">Payment & Marketing Intelligence</h4>
+                        <p className="text-xs text-gray-700 mb-1"><span className="font-semibold">Payment setup:</span> {lead.priority_1_marketing_and_processing?.detected_payment_setup || "Unknown"}</p>
+                        <p className="text-xs text-gray-700 mb-2"><span className="font-semibold">Processing opportunity:</span> {lead.priority_1_marketing_and_processing?.payment_processing_opportunity || "N/A"}</p>
+                        {lead.priority_1_marketing_and_processing?.digital_marketing_flaws?.length > 0 && (
+                          <ul className="list-disc list-inside text-xs text-gray-700 mb-2">
+                            {lead.priority_1_marketing_and_processing.digital_marketing_flaws.map((flaw, flawIndex) => <li key={flawIndex}>{flaw}</li>)}
+                          </ul>
+                        )}
+                        <p className="text-xs text-gray-700"><span className="font-semibold">Pitch:</span> {lead.priority_1_marketing_and_processing?.marketing_pitch_angle || "N/A"}</p>
+                      </section>
+                      <section>
+                        <h4 className="text-sm font-bold text-indigo-700 mb-2">Amazon Supplies Inference</h4>
+                        <p className="text-xs text-gray-700 mb-1"><span className="font-semibold">Category:</span> {lead.priority_2_amazon_supplies_inference?.primary_amazon_category || "N/A"}</p>
+                        <p className="text-xs text-gray-700 mb-2"><span className="font-semibold">Monthly volume:</span> {lead.priority_2_amazon_supplies_inference?.estimated_monthly_order_volume || "N/A"}</p>
+                        {lead.priority_2_amazon_supplies_inference?.high_probability_amazon_skus?.length > 0 && (
+                          <p className="text-xs text-gray-700 mb-2"><span className="font-semibold">Likely SKUs:</span> {lead.priority_2_amazon_supplies_inference.high_probability_amazon_skus.join(", ")}</p>
+                        )}
+                        <p className="text-xs text-gray-700"><span className="font-semibold">Pitch:</span> {lead.priority_2_amazon_supplies_inference?.supply_pitch_angle || "N/A"}</p>
+                      </section>
+                    </div>
                   </div>
-                   <div className="bg-gray-50 px-5 py-3 border-t border-gray-100">
+                    <div className="bg-gray-50 px-5 py-3 border-t border-gray-100">
                      {lead.website && lead.website.startsWith("http") ? (
                        <a
                          href={lead.website}

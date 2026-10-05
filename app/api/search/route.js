@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { extractDataFromPrompt } from "@/lib/ai";
+import { analyzeLead, extractDataFromPrompt } from "@/lib/ai";
 import { searchMapsViaSerper } from "@/lib/serper";
+import { inspectWebsites } from "@/lib/website";
 
 function buildValidationError(detail) {
   const error = new Error(`Error: Invalid input validation failed - ${detail}`);
@@ -80,13 +81,30 @@ export async function POST(request) {
       console.log(`[API] Kept all ${filteredLeads.length} leads (Broad Mode).`);
     }
 
-    const formattedLeads = filteredLeads.map(lead => ({
-      name: lead.title || "Unknown",
-      address: lead.address || "Unknown",
-      // Force phone to be treated as string in Sheets to avoid #ERROR!
-      phone: lead.phoneNumber || lead.phone ? `'${lead.phoneNumber || lead.phone}` : "N/A",
-      rating: lead.rating || "N/A",
-      website: lead.website || lead.link || "No website found"
+    const websites = filteredLeads.map(lead => lead.website || lead.link || "");
+    const inspections = await inspectWebsites(websites, 5);
+    const formattedLeads = await Promise.all(filteredLeads.map(async (lead, index) => {
+      const formattedLead = {
+        name: lead.title || "Unknown",
+        address: lead.address || "Unknown",
+        // Force phone to be treated as string in Sheets to avoid #ERROR!
+        phone: lead.phoneNumber || lead.phone ? `'${lead.phoneNumber || lead.phone}` : "N/A",
+        rating: lead.rating || "N/A",
+        reviews: lead.reviews || lead.reviewCount || lead.userRatingCount || "N/A",
+        website: lead.website || lead.link || "No website found"
+      };
+
+      const websiteInspection = inspections[index];
+      const intelligence = await analyzeLead({
+        name: formattedLead.name,
+        address: formattedLead.address,
+        phone: formattedLead.phone,
+        rating: formattedLead.rating,
+        reviews: formattedLead.reviews,
+        website: formattedLead.website
+      }, websiteInspection);
+
+      return { ...formattedLead, website_inspection: websiteInspection, ...intelligence };
     }));
 
     if (formattedLeads.length === 0) {
