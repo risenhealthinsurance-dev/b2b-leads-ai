@@ -163,7 +163,7 @@ test("filters discovery results that contradict the authoritative ZIP", () => {
   assert.deepEqual(results.map((lead) => lead.title), ["In scope", "Unlocated"]);
 });
 
-test("provides a safe visual map fallback when a lead has no coordinates", () => {
+test("never fabricates map coordinates when a lead has no coordinates", () => {
   assert.deepEqual(getMapCoordinates({ coordinates: { latitude: 29.7, longitude: -95.4 } }, 0), [-95.4, 29.7]);
-  assert.deepEqual(getMapCoordinates({}, 5), [-95.38, 29.655]);
+  assert.equal(getMapCoordinates({}, 5), null);
 });

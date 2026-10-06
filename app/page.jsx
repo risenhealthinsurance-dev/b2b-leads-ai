@@ -22,9 +22,7 @@ function mapCoordinates(account, index) {
   const latitude = Number(account?.coordinates?.latitude);
   const longitude = Number(account?.coordinates?.longitude);
   if (Number.isFinite(latitude) && Number.isFinite(longitude)) return [longitude, latitude];
-  const column = Math.max(0, Number(index) || 0) % 4;
-  const row = Math.floor(Math.max(0, Number(index) || 0) / 4);
-  return [-95.43 + column * 0.05, 29.65 + row * 0.005];
+  return null;
 }
 
 function confidenceTone(value) { return value === "High" ? "success" : value === "Low" ? "warning" : "info"; }
@@ -72,6 +70,7 @@ function MapCanvas({ accounts, selected, onSelect, zip, quadrant }) {
   const containerRef = useRef(null);
   const mapRef = useRef(null);
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  const locatedAccounts = accounts.filter((account) => mapCoordinates(account) !== null);
 
   useEffect(() => {
     if (!token || !containerRef.current) return undefined;
@@ -85,21 +84,21 @@ function MapCanvas({ accounts, selected, onSelect, zip, quadrant }) {
       });
     });
     map.on("load", () => {
-      accounts.slice(0, 8).forEach((account, index) => {
+      locatedAccounts.slice(0, 8).forEach((account) => {
         const marker = document.createElement("button");
         marker.className = `mapbox-score-marker ${selected?.business_id === account.business_id ? "mapbox-score-marker-selected" : ""}`;
         marker.type = "button";
         marker.textContent = String(scoreFor(account));
         marker.setAttribute("aria-label", `Select ${account.name || "business"}`);
         marker.addEventListener("click", () => onSelect(account));
-        new mapboxgl.Marker({ element: marker, anchor: "bottom" }).setLngLat(mapCoordinates(account, index)).addTo(map);
+        new mapboxgl.Marker({ element: marker, anchor: "bottom" }).setLngLat(mapCoordinates(account)).addTo(map);
       });
     });
     return () => { map.remove(); mapRef.current = null; };
-  }, [accounts, onSelect, selected?.business_id, token]);
+  }, [locatedAccounts, onSelect, selected?.business_id, token]);
 
   if (token) return <div ref={containerRef} data-testid="map-container" className="map-canvas mapbox-canvas" aria-label={`Mapbox map of ${zip || "selected ZIP"} ${quadrant || "active quadrant"}`} />;
-      return <div className="map-canvas" data-testid="map-container" aria-label={`Map preview of ${zip || "selected ZIP"} ${quadrant || "active quadrant"}`}><div className="map-grid" /><div className="map-label map-label-one">{quadrant || "ACTIVE QUADRANT"}</div><div className="map-label map-label-two">PUBLIC BUSINESS SIGNALS</div>{accounts.slice(0, 8).map((account, index) => <button key={account.business_id || `${account.name}-${index}`} className={`map-pin pin-${index % 4} ${selected?.business_id === account.business_id ? "map-pin-selected" : ""}`} onClick={() => onSelect(account)} aria-label={`Select ${account.name || "business"}`}><span>{scoreFor(account)}</span></button>)}</div>;
+      return <div className="map-canvas" data-testid="map-container" aria-label={`Map preview of ${zip || "selected ZIP"} ${quadrant || "active quadrant"}`}><div className="map-grid" /><div className="map-label map-label-one">{quadrant || "ACTIVE QUADRANT"}</div><div className="map-label map-label-two">PUBLIC BUSINESS SIGNALS</div>{locatedAccounts.slice(0, 8).map((account, index) => <button key={account.business_id || `${account.name}-${index}`} className={`map-pin pin-${index % 4} ${selected?.business_id === account.business_id ? "map-pin-selected" : ""}`} onClick={() => onSelect(account)} aria-label={`Select ${account.name || "business"}`}><span>{scoreFor(account)}</span></button>)}</div>;
 }
 
 function MapPanel({ accounts, selected, onSelect, zip, quadrant }) {
