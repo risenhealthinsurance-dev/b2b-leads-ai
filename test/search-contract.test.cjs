@@ -80,6 +80,7 @@ test("reports measured coverage and leaves unmeasured totals explicitly unknown"
   assert.equal(meta.coverage.totalKnown, null);
   assert.equal(meta.coverage.remaining, null);
   assert.equal(meta.coverage.status, "measured-session-progress");
+  assert.equal(meta.source.intentMode, "broad");
   assert.deepEqual(meta.coverage.quadrantsRemaining, ["A1", "A2", "B1", "B2"]);
 });
 

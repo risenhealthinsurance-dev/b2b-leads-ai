@@ -88,7 +88,7 @@ export async function POST(request) {
       failureWarnings.details = buildWarningDetails({ ...warnings, serperFailure: true, serperDetail: error?.message });
       return NextResponse.json({
         leads: [],
-        meta: buildSearchMeta({ location, category, intent, context, leads: [], warnings: failureWarnings, source: { extraction: extracted?._warning ? "deterministic-fallback" : "openrouter", enrichment: "unavailable" } }),
+        meta: buildSearchMeta({ location, category, intent, context, leads: [], warnings: failureWarnings, source: { extraction: extracted?._warning ? "deterministic-fallback" : "openrouter", enrichment: "unavailable", intentMode: requiresMissingWebsite ? "strict-no-website" : "broad" } }),
         error: error?.message || "Serper business discovery failed.",
         statusCode: status,
       }, { status });
@@ -157,7 +157,7 @@ export async function POST(request) {
     // Return leads and metadata for the frontend
     return NextResponse.json({
       leads: formattedLeads,
-      meta: buildSearchMeta({ location, category, intent, context, leads: formattedLeads, warnings, source: { extraction: extracted?._warning ? "deterministic-fallback" : "openrouter", enrichment: warnings.enrichmentFailures || warnings.websiteFailures ? "partial" : "openrouter" } })
+      meta: buildSearchMeta({ location, category, intent, context, leads: formattedLeads, warnings, source: { extraction: extracted?._warning ? "deterministic-fallback" : "openrouter", enrichment: warnings.enrichmentFailures || warnings.websiteFailures ? "partial" : "openrouter", intentMode: requiresMissingWebsite ? "strict-no-website" : "broad" } })
     });
   } catch (error) {
     const status = normalizeStatus(error);
