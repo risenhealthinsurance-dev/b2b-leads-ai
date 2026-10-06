@@ -13,6 +13,7 @@ const {
   filterLeadsToContext,
   getMapCoordinates,
   normalizeZip,
+  requiresMissingWebsiteIntent,
 } = require("../lib/search-contract.cjs");
 const { validateSearchPrompt } = require("../lib/search-validation.cjs");
 const { resolveAuthoritativeZip, buildWarningDetails } = require("../lib/search-contract.cjs");
@@ -28,6 +29,14 @@ test("prompt ZIP overrides the dedicated ZIP while preserving field-only ZIP beh
   assert.deepEqual(resolveAuthoritativeZip("Find businesses in Houston", "77099"), { zip: "77099", promptZip: "", overridden: false });
   assert.equal(normalizeZip("77096-1234"), "77096");
   assert.deepEqual(resolveAuthoritativeZip("Find businesses in ZIP 77096-1234", "77099-0001"), { zip: "77096", promptZip: "77096", overridden: true });
+});
+
+test("detects strict no-website intent without incorrectly enabling it for broad searches", () => {
+  assert.equal(requiresMissingWebsiteIntent("Find restaurants that need a website"), true);
+  assert.equal(requiresMissingWebsiteIntent("Find businesses without websites"), true);
+  assert.equal(requiresMissingWebsiteIntent("Find restaurants for digital marketing"), false);
+  const fallback = fallbackExtractFromPrompt("Find restaurants in ZIP 77096 that need a website");
+  assert.equal(fallback.requires_missing_website, true);
 });
 
 test("warning details are structured for concise UI summaries", () => {
