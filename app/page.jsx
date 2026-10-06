@@ -8,11 +8,13 @@ import { validateSearchPrompt } from "../lib/search-validation.cjs";
 
 const QUADRANTS = ["A1", "A2", "B1", "B2"];
 const REPS = ["All Reps", "Sarah M.", "James R.", "Unassigned"];
-const SAMPLE_ACCOUNTS = [
+/* Sample records were removed: the workspace is live-data-only. */
+/*
   { business_id: "sample-precision-auto-tire", name: "Precision Auto & Tire", category: "Auto Repair", address: "0.8 mi · Houston, TX 77096", zip: "77096", quadrant: "A1", rep: "All Reps", rating: "4.7", reviews: "186", confidence: "High", enrichment_status: "enriched", supplies_opportunity_score: 87, supply_categories: ["Maintenance and repair supplies", "Safety and protective equipment"], fit_reasons: ["Large operational footprint", "High customer activity"], next: "Walk-in visit — ask for the shop owner. Best time: 9–11 AM weekdays.", website: "precisionautotire.example", website_inspection: { status: "available", payment_signals: ["Square"] }, sources: ["Google Maps", "Website inspection"], freshness: "Sample preview", priority_2_amazon_supplies_inference: { primary_amazon_category: "MRO", estimated_monthly_order_volume: "Medium: $500–$2,000/mo", high_probability_amazon_skus: ["Shop towels", "Nitrile gloves", "Brake cleaner"], supply_pitch_angle: "Consolidate recurring maintenance and safety purchasing across the shop." } },
   { business_id: "sample-murphys-plumbing-hvac", name: "Murphy's Plumbing & HVAC", category: "Home Services", address: "3.4 mi · Houston, TX 77096", zip: "77096", quadrant: "A1", rep: "All Reps", rating: "4.5", reviews: "74", confidence: "Medium", enrichment_status: "partial", supplies_opportunity_score: 62, supply_categories: ["Maintenance and repair supplies", "Safety and protective equipment"], fit_reasons: ["Field-service category fit", "Likely distributed crew needs"], next: "Call office directly. Ask for Mike Murphy (owner based on public profile).", website: "No website found", website_inspection: { status: "unavailable", payment_signals: [] }, sources: ["Google Maps"], freshness: "Sample preview", priority_2_amazon_supplies_inference: { primary_amazon_category: "MRO", estimated_monthly_order_volume: "Low: <$500/mo", high_probability_amazon_skus: ["PVC fittings", "Work gloves", "Pipe sealant"], supply_pitch_angle: "Lead with consolidated purchasing for the crew’s repeat repair supplies." } },
 ];
 const SAMPLE_META = { location: "ZIP 77096", category: "businesses", intent: "recurring supplies", zip: "77096", quadrant: "A1", rep: "All Reps", coverageIntent: true, coverage: { discovered: 8, enriched: 1, totalKnown: null, remaining: 1, status: "sample-preview", quadrantsComplete: [], quadrantsRemaining: ["A2", "B1", "B2"] }, warnings: { messages: ["Representative sample data — run a search to load live public-business results."] } };
+*/
 
 function scoreFor(account) {
   if (Number.isFinite(Number(account.supplies_opportunity_score))) return Number(account.supplies_opportunity_score);
@@ -115,7 +117,7 @@ export default function Home() {
   const [zip, setZip] = useState("77096");
   const [quadrant, setQuadrant] = useState("A1");
   const [rep, setRep] = useState("All Reps");
-  const [accounts, setAccounts] = useState(SAMPLE_ACCOUNTS);
+  const [accounts, setAccounts] = useState([]);
   const [selected, setSelected] = useState(null);
   const [view, setView] = useState("list");
   const [sort, setSort] = useState("opportunity");
@@ -123,8 +125,8 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [promptError, setPromptError] = useState("");
   const searchInputRef = useRef(null);
-  const [meta, setMeta] = useState(SAMPLE_META);
-  const [isSample, setIsSample] = useState(true);
+  const [meta, setMeta] = useState(null);
+  const isSample = false;
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const filtered = useMemo(() => [...accounts].sort((a, b) => sort === "distance" ? Number(a.distance || 999) - Number(b.distance || 999) : sort === "freshness" ? String(b.freshness || "").localeCompare(String(a.freshness || "")) : sort === "signals" ? Number(b.reviews || 0) - Number(a.reviews || 0) : scoreFor(b) - scoreFor(a)), [accounts, sort]);
@@ -134,7 +136,7 @@ export default function Home() {
     const validation = validateSearchPrompt(prompt);
     if (!validation.valid) { setPromptError(validation.error); searchInputRef.current?.focus(); return; }
     setPromptError(""); setLoading(true); setNotice(""); setSaved(false); setSelected(null);
-    try { const response = await fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, zip, quadrant, rep }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Search failed"); setAccounts(data.leads || []); setMeta(data.meta || null); setIsSample(false); const warningMessages = data.meta?.warnings?.messages || []; setNotice(warningMessages.length ? warningMessages.join(" ") : `${data.leads?.length || 0} businesses discovered in the active search scope.`); }
+    try { const response = await fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, zip, quadrant, rep }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Search failed"); setAccounts(data.leads || []); setMeta(data.meta || null); const warningMessages = data.meta?.warnings?.messages || []; setNotice(warningMessages.length ? warningMessages.join(" ") : `${data.leads?.length || 0} live businesses discovered in the active search scope.`); }
     catch (error) { setNotice(error.message || "Unable to search right now."); } finally { setLoading(false); }
   };
 
