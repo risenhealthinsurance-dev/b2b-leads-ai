@@ -4,7 +4,7 @@ import { searchMapsViaSerper } from "@/lib/serper";
 import { inspectWebsites } from "@/lib/website";
 import searchContract from "@/lib/search-contract.cjs";
 
-const { normalizeSearchContext, buildSearchMeta, normalizeLeadRecord } = searchContract;
+const { normalizeSearchContext, buildSearchMeta, normalizeLeadRecord, resolveSearchExtraction } = searchContract;
 
 function buildValidationError(detail) {
   const error = new Error(`Error: Invalid input validation failed - ${detail}`);
@@ -52,18 +52,26 @@ export async function POST(request) {
       throw error;
     }
 
-    const context = normalizeSearchContext({
+    const requestContext = normalizeSearchContext({
       prompt,
       zip: body?.zip || extracted.zip,
       quadrant: body?.quadrant || extracted.quadrant,
       rep: body?.rep || extracted.rep,
     });
-    context.coverageIntent = context.coverageIntent || Boolean(extracted.coverage_intent);
-
-    const location = typeof extracted.location === "string" ? extracted.location.trim() : context.zip ? `ZIP ${context.zip}` : "";
-    const category = typeof extracted.category === "string" ? extracted.category.trim() : "";
-    const intent = typeof extracted.intent === "string" ? extracted.intent.trim() : "";
-    const requiresMissingWebsite = !!extracted.requires_missing_website;
+    const resolved = resolveSearchExtraction({ prompt, extracted, context: requestContext });
+    const context = normalizeSearchContext(resolved);
+    const warnings = {
+      extractionFallback: Boolean(extracted?._warning),
+      contextOverride: Boolean(body?.zip && extracted?.zip && String(body.zip).trim() !== String(extracted.zip).trim()),
+      enrichmentFailures: 0,
+      websiteFailures: 0,
+      zeroResults: false,
+      messages: extracted?._warning ? [extracted._warning] : [],
+    };
+    const location = resolved.location;
+    const category = resolved.category;
+    const intent = resolved.intent;
+    const requiresMissingWebsite = !!resolved.requires_missing_website;
 
     if (!location || !category) {
       throw buildValidationError("Could not extract both location and category from prompt.");
@@ -74,7 +82,7 @@ export async function POST(request) {
     console.log("[API] Starting Serper search step.");
     let localResults;
     try {
-      localResults = await searchMapsViaSerper(category, location, context);
+      localResults = await searchMapsViaSerper(category, location, context, resolved.supply_categories);
     } catch (error) {
       console.error("[API] searchMapsViaSerper failed:", error);
       throw error;
@@ -94,6 +102,8 @@ export async function POST(request) {
 
     const websites = filteredLeads.map(lead => lead.website || lead.link || "");
     const inspections = await inspectWebsites(websites, 5);
+    warnings.websiteFailures = inspections.filter((inspection) => inspection?.status === "unavailable" || inspection?.status === "http_error").length;
+    if (warnings.websiteFailures > 0) warnings.messages.push(`${warnings.websiteFailures} website inspections were unavailable or returned HTTP errors.`);
     const formattedLeads = await Promise.all(filteredLeads.map(async (lead, index) => {
       const formattedLead = {
         name: lead.title || "Unknown",
@@ -106,7 +116,7 @@ export async function POST(request) {
       };
 
       const websiteInspection = inspections[index];
-      const intelligence = await analyzeLead({
+      const intelligenceResult = await analyzeLead({
         name: formattedLead.name,
         address: formattedLead.address,
         phone: formattedLead.phone,
@@ -115,6 +125,8 @@ export async function POST(request) {
         website: formattedLead.website
       }, websiteInspection);
 
+      const { _warning: intelligenceWarning, ...intelligence } = intelligenceResult || {};
+      if (intelligenceWarning) warnings.enrichmentFailures += 1;
       const sources = ["Google Maps"];
       if (websiteInspection?.status === "available" || websiteInspection?.status === "http_error") sources.push("Website inspection");
       const normalized = normalizeLeadRecord({
@@ -130,12 +142,16 @@ export async function POST(request) {
 
     if (formattedLeads.length === 0) {
       console.log("[API] No leads found matching the criteria.");
+      warnings.zeroResults = true;
+      warnings.messages.push(`No businesses were returned for ${location}${context.quadrant ? ` ${context.quadrant}` : ""}.`);
     }
+    if (warnings.enrichmentFailures > 0) warnings.messages.push(`${warnings.enrichmentFailures} leads kept partial intelligence because enrichment output was invalid or unavailable.`);
+    if (warnings.contextOverride) warnings.messages.push("The selected ZIP, quadrant, and representative took precedence over conflicting model extraction.");
 
     // Return leads and metadata for the frontend
     return NextResponse.json({
       leads: formattedLeads,
-      meta: buildSearchMeta({ location, category, intent, context, leads: formattedLeads })
+      meta: buildSearchMeta({ location, category, intent, context, leads: formattedLeads, warnings })
     });
   } catch (error) {
     const status = normalizeStatus(error);

@@ -1,10 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FaArrowRight, FaCheck, FaChevronDown, FaClock, FaExternalLinkAlt, FaGoogle, FaMapMarkerAlt, FaPhone, FaSearch, FaStar, FaTimes } from "react-icons/fa";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 const QUADRANTS = ["A1", "A2", "B1", "B2"];
 const REPS = ["All Reps", "Sarah M.", "James R.", "Unassigned"];
+const SAMPLE_ACCOUNTS = [
+  { business_id: "sample-precision-auto-tire", name: "Precision Auto & Tire", category: "Auto Repair", address: "0.8 mi · Houston, TX 77096", zip: "77096", quadrant: "A1", rep: "All Reps", rating: "4.7", reviews: "186", confidence: "High", enrichment_status: "enriched", supplies_opportunity_score: 87, supply_categories: ["Maintenance and repair supplies", "Safety and protective equipment"], fit_reasons: ["Large operational footprint", "High customer activity"], next: "Walk-in visit — ask for the shop owner. Best time: 9–11 AM weekdays.", website: "precisionautotire.example", website_inspection: { status: "available", payment_signals: ["Square"] }, sources: ["Google Maps", "Website inspection"], freshness: "Sample preview", priority_2_amazon_supplies_inference: { primary_amazon_category: "MRO", estimated_monthly_order_volume: "Medium: $500–$2,000/mo", high_probability_amazon_skus: ["Shop towels", "Nitrile gloves", "Brake cleaner"], supply_pitch_angle: "Consolidate recurring maintenance and safety purchasing across the shop." } },
+  { business_id: "sample-murphys-plumbing-hvac", name: "Murphy's Plumbing & HVAC", category: "Home Services", address: "3.4 mi · Houston, TX 77096", zip: "77096", quadrant: "A1", rep: "All Reps", rating: "4.5", reviews: "74", confidence: "Medium", enrichment_status: "partial", supplies_opportunity_score: 62, supply_categories: ["Maintenance and repair supplies", "Safety and protective equipment"], fit_reasons: ["Field-service category fit", "Likely distributed crew needs"], next: "Call office directly. Ask for Mike Murphy (owner based on public profile).", website: "No website found", website_inspection: { status: "unavailable", payment_signals: [] }, sources: ["Google Maps"], freshness: "Sample preview", priority_2_amazon_supplies_inference: { primary_amazon_category: "MRO", estimated_monthly_order_volume: "Low: <$500/mo", high_probability_amazon_skus: ["PVC fittings", "Work gloves", "Pipe sealant"], supply_pitch_angle: "Lead with consolidated purchasing for the crew’s repeat repair supplies." } },
+];
+const SAMPLE_META = { location: "ZIP 77096", category: "businesses", intent: "recurring supplies", zip: "77096", quadrant: "A1", rep: "All Reps", coverageIntent: true, coverage: { discovered: 8, enriched: 1, totalKnown: null, remaining: 1, status: "sample-preview", quadrantsComplete: [], quadrantsRemaining: ["A2", "B1", "B2"] }, warnings: { messages: ["Representative sample data — run a search to load live public-business results."] } };
 
 function scoreFor(account) {
   if (Number.isFinite(Number(account.supplies_opportunity_score))) return Number(account.supplies_opportunity_score);
@@ -54,8 +61,38 @@ function AccountDrawer({ account, onClose, onSave, saving, saved, notify }) {
   </aside>;
 }
 
+function MapCanvas({ accounts, selected, onSelect, zip, quadrant }) {
+  const containerRef = useRef(null);
+  const mapRef = useRef(null);
+  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
+  useEffect(() => {
+    if (!token || !containerRef.current) return undefined;
+    mapboxgl.accessToken = token;
+    const map = new mapboxgl.Map({ container: containerRef.current, style: "mapbox://styles/mapbox/dark-v11", center: [-95.43, 29.65], zoom: 11.2, attributionControl: true });
+    mapRef.current = map;
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+    map.on("load", () => {
+      accounts.slice(0, 8).forEach((account, index) => {
+        const marker = document.createElement("button");
+        marker.className = `mapbox-score-marker ${selected?.business_id === account.business_id ? "mapbox-score-marker-selected" : ""}`;
+        marker.type = "button";
+        marker.textContent = String(scoreFor(account));
+        marker.setAttribute("aria-label", `Select ${account.name || "business"}`);
+        marker.addEventListener("click", () => onSelect(account));
+        new mapboxgl.Marker({ element: marker, anchor: "bottom" }).setLngLat([-95.5 + (index % 4) * 0.03, 29.62 + Math.floor(index / 4) * 0.035]).addTo(map);
+      });
+    });
+    return () => { map.remove(); mapRef.current = null; };
+  }, [accounts, onSelect, selected?.business_id, token]);
+
+  if (token) return <div ref={containerRef} className="map-canvas mapbox-canvas" aria-label={`Mapbox map of ${zip || "selected ZIP"} ${quadrant || "active quadrant"}`} />;
+  return <div className="map-canvas" aria-label={`Map preview of ${zip || "selected ZIP"} ${quadrant || "active quadrant"}`}><div className="map-grid" /><div className="map-label map-label-one">{quadrant || "ACTIVE QUADRANT"}</div><div className="map-label map-label-two">PUBLIC BUSINESS SIGNALS</div>{accounts.slice(0, 8).map((account, index) => <button key={account.business_id || `${account.name}-${index}`} className={`map-pin pin-${index % 4} ${selected?.business_id === account.business_id ? "map-pin-selected" : ""}`} onClick={() => onSelect(account)} aria-label={`Select ${account.name || "business"}`}><span>{scoreFor(account)}</span></button>)}</div>;
+}
+
 function MapPanel({ accounts, selected, onSelect, zip, quadrant }) {
-  return <div className="map-panel"><div className="map-panel-header"><div><span className="eyebrow">PUBLIC BUSINESS MAP</span><h2>ZIP {zip || "—"} · QUADRANT {quadrant || "—"}</h2></div><Badge tone="info">{accounts.length} discovered</Badge></div><div className="map-canvas"><div className="map-grid" /><div className="map-label map-label-one">{quadrant || "ACTIVE QUADRANT"}</div><div className="map-label map-label-two">PUBLIC BUSINESS SIGNALS</div>{accounts.slice(0, 8).map((account, index) => <button key={account.business_id || `${account.name}-${index}`} className={`map-pin pin-${index % 4} ${selected?.business_id === account.business_id ? "map-pin-selected" : ""}`} onClick={() => onSelect(account)} aria-label={`Select ${account.name || "business"}`}><span>{scoreFor(account)}</span></button>)}</div><p className="map-note">Map shows discovered public businesses in the active search scope. Visit routing belongs to the field-sales system.</p></div>;
+  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  return <div className="map-panel"><div className="map-panel-header"><div><span className="eyebrow">PUBLIC BUSINESS MAP</span><h2>ZIP {zip || "—"} · QUADRANT {quadrant || "—"}</h2></div><Badge tone="info">{accounts.length} discovered</Badge></div><MapCanvas accounts={accounts} selected={selected} onSelect={onSelect} zip={zip} quadrant={quadrant} />{!token && <p className="map-config-note">Mapbox token not configured; showing the accessible visual map fallback.</p>}<p className="map-note">Map shows discovered public businesses in the active search scope. Visit routing belongs to the field-sales system.</p></div>;
 }
 
 export default function Home() {
@@ -63,20 +100,21 @@ export default function Home() {
   const [zip, setZip] = useState("77096");
   const [quadrant, setQuadrant] = useState("A1");
   const [rep, setRep] = useState("All Reps");
-  const [accounts, setAccounts] = useState([]);
+  const [accounts, setAccounts] = useState(SAMPLE_ACCOUNTS);
   const [selected, setSelected] = useState(null);
   const [view, setView] = useState("list");
   const [sort, setSort] = useState("opportunity");
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
-  const [meta, setMeta] = useState(null);
+  const [meta, setMeta] = useState(SAMPLE_META);
+  const [isSample, setIsSample] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const filtered = useMemo(() => [...accounts].sort((a, b) => sort === "distance" ? Number(a.distance || 999) - Number(b.distance || 999) : sort === "freshness" ? String(b.freshness || "").localeCompare(String(a.freshness || "")) : scoreFor(b) - scoreFor(a)), [accounts, sort]);
+  const filtered = useMemo(() => [...accounts].sort((a, b) => sort === "distance" ? Number(a.distance || 999) - Number(b.distance || 999) : sort === "freshness" ? String(b.freshness || "").localeCompare(String(a.freshness || "")) : sort === "signals" ? Number(b.reviews || 0) - Number(a.reviews || 0) : scoreFor(b) - scoreFor(a)), [accounts, sort]);
 
   const search = async (event) => {
     event.preventDefault(); if (!prompt.trim()) return; setLoading(true); setNotice(""); setSaved(false); setSelected(null);
-    try { const response = await fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, zip, quadrant, rep }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Search failed"); setAccounts(data.leads || []); setMeta(data.meta || null); setNotice(`${data.leads?.length || 0} businesses discovered in the active search scope.`); }
+    try { const response = await fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, zip, quadrant, rep }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Search failed"); setAccounts(data.leads || []); setMeta(data.meta || null); setIsSample(false); const warningMessages = data.meta?.warnings?.messages || []; setNotice(warningMessages.length ? warningMessages.join(" ") : `${data.leads?.length || 0} businesses discovered in the active search scope.`); }
     catch (error) { setNotice(error.message || "Unable to search right now."); } finally { setLoading(false); }
   };
 
@@ -92,7 +130,7 @@ export default function Home() {
       <section className="search-panel"><form className="search-form" onSubmit={search}><FaSearch /><input aria-label="Natural-language business search" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Search businesses and recurring supply opportunities" /><button type="submit" disabled={loading}>{loading ? "Discovering..." : "Discover & enrich"}</button></form><div className="search-helper">Builds geographic coverage using public business facts, location, reviews, website, and visible operational signals. <Badge tone="success">Observed facts</Badge> <Badge tone="info">Confidence-labeled inference</Badge> <span>No private purchasing history.</span></div><div className="search-controls"><label>ZIP<input value={zip} onChange={(event) => setZip(event.target.value)} inputMode="numeric" aria-label="ZIP code" /></label><label>QUADRANT<select value={quadrant} onChange={(event) => setQuadrant(event.target.value)} aria-label="Quadrant">{QUADRANTS.map((item) => <option key={item}>{item}</option>)}</select></label><label>REP<select value={rep} onChange={(event) => setRep(event.target.value)} aria-label="Representative">{REPS.map((item) => <option key={item}>{item}</option>)}</select></label><span className="active-chip">{quadrant} active</span><div className="view-toggle" role="group" aria-label="Workspace view"><button type="button" className={view === "list" ? "selected-toggle" : ""} onClick={() => setView("list")}>List</button><button type="button" className={view === "map" ? "selected-toggle" : ""} onClick={() => setView("map")}>Map</button></div></div></section>
       <section className="progress-strip" aria-label="ZIP and quadrant enrichment progress"><div><strong>{coverage.discovered}</strong><span>ZIP DISCOVERED<small>businesses in {zip || "selected ZIP"}</small></span></div><div><strong>{coverage.enriched}</strong><span>{quadrant} ENRICHED<small>of {coverage.discovered} discovered</small></span></div><div><strong>{coverage.remaining ?? "—"}</strong><span>{quadrant} REMAINING<small>{coverage.remaining === null ? "not yet measured" : "awaiting enrichment"}</small></span></div><div><strong>{coverage.quadrantsRemaining?.length ? `${QUADRANTS.length - coverage.quadrantsRemaining.length}/${QUADRANTS.length}` : "0/4"}</strong><span>QUADRANTS COMPLETE<small>{coverage.quadrantsRemaining?.length || 4} remaining</small></span></div><p>Source-backed fact <span>Confidence-labeled inference</span> <em>Available for field-sales systems through shared data/API.</em></p></section>
       {notice && <div className="notice" role="status"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="Dismiss notice"><FaTimes /></button></div>}
-      {view === "map" ? <MapPanel accounts={filtered} selected={selected} onSelect={setSelected} zip={zip} quadrant={quadrant} /> : <section className="workspace"><div className="queue-list"><div className="section-heading"><div><div className="eyebrow">SALES RELEVANCE WITH COMPLETE COVERAGE</div><h2>{filtered.length ? `${filtered.length} businesses discovered` : "Search the active quadrant"}</h2><p>{filtered.length ? "Ranked for sales relevance while preserving geographic coverage." : "Use natural language to find and enrich businesses in the selected ZIP and quadrant."}</p></div><label className="select-control">Sort <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="opportunity">Opportunity</option><option value="distance">Distance</option><option value="freshness">Freshness</option></select><FaChevronDown /></label></div>{filtered.map((account) => <AccountCard key={account.business_id || account.name} account={account} selected={selected?.business_id === account.business_id} onSelect={setSelected} />)}{!filtered.length && <div className="empty-state"><FaSearch /><h3>No businesses in this session yet</h3><p>Run the discovery query to populate the active quadrant with live public-business results.</p></div>}</div><MapPanel accounts={filtered} selected={selected} onSelect={setSelected} zip={zip} quadrant={quadrant} /></section>}
+      {view === "map" ? <MapPanel accounts={filtered} selected={selected} onSelect={setSelected} zip={zip} quadrant={quadrant} /> : <section className="workspace"><div className="queue-list">{isSample && <div className="sample-banner" role="status"><strong>Representative sample data</strong><span>Run Discover & enrich to replace this preview with live public-business results.</span></div>}<div className="section-heading"><div><div className="eyebrow">SALES RELEVANCE WITH COMPLETE COVERAGE</div><h2>{filtered.length ? `${filtered.length} ${isSample ? "representative businesses" : "businesses discovered"}` : "Search the active quadrant"}</h2><p>{filtered.length ? "Ranked for sales relevance while preserving geographic coverage." : "Use natural language to find and enrich businesses in the selected ZIP and quadrant."}</p></div><label className="select-control">Sort <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="opportunity">Opportunity</option><option value="distance">Distance</option><option value="signals">Public signals</option><option value="freshness">Freshness</option></select><FaChevronDown /></label></div>{filtered.map((account) => <AccountCard key={account.business_id || account.name} account={account} selected={selected?.business_id === account.business_id} onSelect={setSelected} />)}{!filtered.length && <div className="empty-state"><FaSearch /><h3>No businesses in this session yet</h3><p>Run the discovery query to populate the active quadrant with live public-business results.</p></div>}</div><MapPanel accounts={filtered} selected={selected} onSelect={setSelected} zip={zip} quadrant={quadrant} /></section>}
       {selected && <AccountDrawer account={selected} onClose={() => setSelected(null)} onSave={save} saving={saving} saved={saved} notify={setNotice} />}
     </main></div>;
 }

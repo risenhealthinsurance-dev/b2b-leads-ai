@@ -6,6 +6,8 @@ const {
   buildSearchMeta,
   normalizeLeadRecord,
   fallbackExtractFromPrompt,
+  resolveSearchExtraction,
+  buildSearchQuery,
 } = require("../lib/search-contract.cjs");
 
 test("normalizes ZIP, quadrant, rep, and coverage intent without losing the natural-language prompt", () => {
@@ -69,4 +71,36 @@ test("falls back to safe ZIP and supply intent extraction when the model returns
   assert.equal(result.zip, "77096");
   assert.equal(result.coverage_intent, true);
   assert.deepEqual(result.supply_categories, ["cleaning", "paper", "restaurant", "maintenance"]);
+});
+
+test("explicit request context overrides contradictory model extraction", () => {
+  const result = resolveSearchExtraction({
+    prompt: "Find every business in ZIP 77096 that buys cleaning supplies",
+    extracted: {
+      location: "34950",
+      category: "businesses",
+      zip: "34950",
+      quadrant: "B2",
+      rep: "James R.",
+      supply_categories: [],
+    },
+    context: { zip: "77096", quadrant: "A1", rep: "All Reps" },
+  });
+
+  assert.equal(result.location, "ZIP 77096");
+  assert.equal(result.zip, "77096");
+  assert.equal(result.quadrant, "A1");
+  assert.equal(result.rep, "All Reps");
+  assert.deepEqual(result.supply_categories, ["cleaning"]);
+});
+
+test("builds a scoped maps query from supply intent instead of generic businesses", () => {
+  const query = buildSearchQuery({
+    category: "businesses",
+    location: "ZIP 77096",
+    context: { zip: "77096", quadrant: "A1" },
+    supplyCategories: ["cleaning", "paper", "maintenance"],
+  });
+
+  assert.equal(query, "businesses that use cleaning, paper, maintenance supplies in ZIP 77096 A1");
 });
