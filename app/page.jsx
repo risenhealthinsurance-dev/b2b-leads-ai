@@ -25,6 +25,11 @@ function mapCoordinates(account, index) {
   return null;
 }
 
+function coordinateLabel(account) {
+  const coordinates = mapCoordinates(account);
+  return coordinates ? `${coordinates[1].toFixed(6)}, ${coordinates[0].toFixed(6)}` : "Location unavailable";
+}
+
 function confidenceTone(value) { return value === "High" ? "success" : value === "Low" ? "warning" : "info"; }
 function Badge({ children, tone = "neutral" }) { return <span className={`badge badge-${tone}`}>{children}</span>; }
 function Score({ account }) { const value = scoreFor(account); return <span className={`score score-${value >= 85 ? "high" : value >= 70 ? "medium" : "low"}`}>{value}</span>; }
@@ -57,7 +62,7 @@ function AccountDrawer({ account, onClose, onSave, saving, saved, notify }) {
     <div className="drawer-header"><div><span className="eyebrow">BUSINESS INTELLIGENCE</span><h2>{account.name || "Unknown business"}</h2><p>{account.category || "Business"} · ZIP {account.zip || "Unknown"} · {account.quadrant || "Quadrant pending"}</p></div><button className="icon-button" data-testid="profile-close-button" onClick={onClose} aria-label="Close profile"><FaTimes /></button></div>
     <div className="drawer-actions"><button onClick={() => notify("Public contact action noted for downstream sales systems.")}><FaPhone /> Contact</button><button onClick={() => notify("Profile refreshed from the current public evidence.")}><FaClock /> Refresh</button></div>
     <div className="drawer-score"><div><span className="eyebrow">SUPPLIES OPPORTUNITY</span><p>Ranked for sales relevance; coverage remains geographic.</p></div><Score account={account} /></div>
-    <IntelligenceSection title="Business and location"><div className="detail-grid"><span>Address<strong>{account.address || "Unavailable"}</strong></span><span>Phone<strong>{account.phone || "Unavailable"}</strong></span><span>Rating<strong>{account.rating || "N/A"} / 5 · {account.reviews || "N/A"} reviews</strong></span><span>Rep context<strong>{account.rep || "All Reps"}</strong></span></div></IntelligenceSection>
+    <IntelligenceSection title="Business and location"><div className="detail-grid"><span>Address<strong>{account.address || "Unavailable"}</strong></span><span>Coordinates<strong data-testid="profile-coordinates">{coordinateLabel(account)}</strong></span><span>Phone<strong>{account.phone || "Unavailable"}</strong></span><span>Rating<strong>{account.rating || "N/A"} / 5 · {account.reviews || "N/A"} reviews</strong></span><span>Rep context<strong>{account.rep || "All Reps"}</strong></span></div></IntelligenceSection>
     <IntelligenceSection title="Recurring supply intelligence"><div className="signal-table"><span>Likely categories<strong>{Array.isArray(account.supply_categories) ? account.supply_categories.join(", ") : supply.primary_amazon_category || "Not determined"}</strong></span><span>Cadence<strong>{supply.estimated_purchasing_cadence || supply.estimated_monthly_order_volume || "Unknown"}</strong></span><span>Volume tier<strong>{supply.estimated_volume_or_spend_tier || supply.estimated_monthly_order_volume || "Unknown"}</strong></span><span>Amazon Business<strong>Unknown — verify conversationally.</strong></span></div>{skuList.length > 0 && <div className="sku-list"><strong>High-confidence examples</strong>{skuList.map((sku) => <Badge key={sku} tone="info">{sku}</Badge>)}</div>}<div className="pitch-card"><span className="eyebrow">VALUE PROPOSITION</span><p>{supply.supply_pitch_angle || "Use public evidence to start a conversation about recurring supply categories, consolidated purchasing, and volume value."}</p></div></IntelligenceSection>
     <IntelligenceSection title="Public evidence and signals"><div className="signal-list"><div><span className="signal-dot" />Observed facts from public business data</div><div><span className="signal-dot signal-dot-purple" />Confidence-labeled inference</div><div><span className="signal-dot signal-dot-amber" />Unknown or unverified data is not treated as negative</div></div><div className="detail-grid compact-grid"><span>Website<strong>{account.website || "No website found"}</strong></span><span>Website status<strong>{inspection.status || "Not inspected"}</strong></span><span>Payment signals<strong>{marketing.detected_payment_setup || inspection.payment_signals?.join(", ") || "Not detected"}</strong></span><span>Freshness<strong>{account.freshness || "Unavailable"}</strong></span></div></IntelligenceSection>
     <IntelligenceSection title="Secondary opportunities"><div className="pitch-card secondary"><strong>Marketing</strong><p>{marketing.marketing_pitch_angle || "No marketing recommendation available."}</p><strong>Payment processing</strong><p>{marketing.payment_processing_opportunity || "No payment opportunity detected."}</p></div></IntelligenceSection>
@@ -89,7 +94,7 @@ function MapCanvas({ accounts, selected, onSelect, zip, quadrant }) {
         marker.className = `mapbox-score-marker ${selected?.business_id === account.business_id ? "mapbox-score-marker-selected" : ""}`;
         marker.type = "button";
         marker.textContent = String(scoreFor(account));
-        marker.setAttribute("aria-label", `Select ${account.name || "business"}`);
+        marker.setAttribute("aria-label", `Select ${account.name || "business"} at ${coordinateLabel(account)}`);
         marker.addEventListener("click", () => onSelect(account));
         new mapboxgl.Marker({ element: marker, anchor: "bottom" }).setLngLat(mapCoordinates(account)).addTo(map);
       });
