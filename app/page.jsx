@@ -80,14 +80,15 @@ function MapCanvas({ accounts, selected, onSelect, zip, quadrant }) {
         marker.textContent = String(scoreFor(account));
         marker.setAttribute("aria-label", `Select ${account.name || "business"}`);
         marker.addEventListener("click", () => onSelect(account));
-        new mapboxgl.Marker({ element: marker, anchor: "bottom" }).setLngLat([-95.5 + (index % 4) * 0.03, 29.62 + Math.floor(index / 4) * 0.035]).addTo(map);
+        const coordinates = account.coordinates;
+        if (coordinates) new mapboxgl.Marker({ element: marker, anchor: "bottom" }).setLngLat([coordinates.longitude, coordinates.latitude]).addTo(map);
       });
     });
     return () => { map.remove(); mapRef.current = null; };
   }, [accounts, onSelect, selected?.business_id, token]);
 
   if (token) return <div ref={containerRef} className="map-canvas mapbox-canvas" aria-label={`Mapbox map of ${zip || "selected ZIP"} ${quadrant || "active quadrant"}`} />;
-  return <div className="map-canvas" aria-label={`Map preview of ${zip || "selected ZIP"} ${quadrant || "active quadrant"}`}><div className="map-grid" /><div className="map-label map-label-one">{quadrant || "ACTIVE QUADRANT"}</div><div className="map-label map-label-two">PUBLIC BUSINESS SIGNALS</div>{accounts.slice(0, 8).map((account, index) => <button key={account.business_id || `${account.name}-${index}`} className={`map-pin pin-${index % 4} ${selected?.business_id === account.business_id ? "map-pin-selected" : ""}`} onClick={() => onSelect(account)} aria-label={`Select ${account.name || "business"}`}><span>{scoreFor(account)}</span></button>)}</div>;
+      return <div className="map-canvas" aria-label={`Map preview of ${zip || "selected ZIP"} ${quadrant || "active quadrant"}`}><div className="map-grid" /><div className="map-label map-label-one">{quadrant || "ACTIVE QUADRANT"}</div><div className="map-label map-label-two">PUBLIC BUSINESS SIGNALS</div>{accounts.slice(0, 8).map((account, index) => <button key={account.business_id || `${account.name}-${index}`} className={`map-pin pin-${index % 4} ${selected?.business_id === account.business_id ? "map-pin-selected" : ""}`} onClick={() => onSelect(account)} aria-label={`Select ${account.name || "business"}`}><span>{scoreFor(account)}</span></button>)}</div>;
 }
 
 function MapPanel({ accounts, selected, onSelect, zip, quadrant }) {

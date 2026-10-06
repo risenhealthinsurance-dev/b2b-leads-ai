@@ -4,7 +4,7 @@ import { searchMapsViaSerper } from "@/lib/serper";
 import { inspectWebsites } from "@/lib/website";
 import searchContract from "@/lib/search-contract.cjs";
 
-const { normalizeSearchContext, buildSearchMeta, normalizeLeadRecord, resolveSearchExtraction } = searchContract;
+const { normalizeSearchContext, buildSearchMeta, buildWarningState, filterLeadsToContext, normalizeCoordinates, normalizeLeadRecord, resolveSearchExtraction } = searchContract;
 
 function buildValidationError(detail) {
   const error = new Error(`Error: Invalid input validation failed - ${detail}`);
@@ -60,14 +60,12 @@ export async function POST(request) {
     });
     const resolved = resolveSearchExtraction({ prompt, extracted, context: requestContext });
     const context = normalizeSearchContext(resolved);
-    const warnings = {
+    const warnings = buildWarningState({
       extractionFallback: Boolean(extracted?._warning),
+      malformedOpenRouter: /malformed structured output/i.test(extracted?._warning || ""),
+      openRouterUnavailable: /OpenRouter was unavailable/i.test(extracted?._warning || ""),
       contextOverride: Boolean(body?.zip && extracted?.zip && String(body.zip).trim() !== String(extracted.zip).trim()),
-      enrichmentFailures: 0,
-      websiteFailures: 0,
-      zeroResults: false,
-      messages: extracted?._warning ? [extracted._warning] : [],
-    };
+    });
     const location = resolved.location;
     const category = resolved.category;
     const intent = resolved.intent;
@@ -85,10 +83,16 @@ export async function POST(request) {
       localResults = await searchMapsViaSerper(category, location, context, resolved.supply_categories);
     } catch (error) {
       console.error("[API] searchMapsViaSerper failed:", error);
-      throw error;
+      const status = normalizeStatus(error);
+      return NextResponse.json({
+        leads: [],
+        meta: buildSearchMeta({ location, category, intent, context, leads: [], warnings: buildWarningState({ ...warnings, serperFailure: true }) }),
+        error: error?.message || "Serper business discovery failed.",
+        statusCode: status,
+      }, { status });
     }
 
-    const resultsArray = Array.isArray(localResults) ? localResults : [];
+    const resultsArray = filterLeadsToContext(Array.isArray(localResults) ? localResults : [], context);
     console.log(`[API] Serper returned ${resultsArray.length} raw results.`);
 
     let filteredLeads;
@@ -103,7 +107,7 @@ export async function POST(request) {
     const websites = filteredLeads.map(lead => lead.website || lead.link || "");
     const inspections = await inspectWebsites(websites, 5);
     warnings.websiteFailures = inspections.filter((inspection) => inspection?.status === "unavailable" || inspection?.status === "http_error").length;
-    if (warnings.websiteFailures > 0) warnings.messages.push(`${warnings.websiteFailures} website inspections were unavailable or returned HTTP errors.`);
+    if (warnings.websiteFailures > 0) warnings.messages = buildWarningState(warnings).messages;
     const formattedLeads = await Promise.all(filteredLeads.map(async (lead, index) => {
       const formattedLead = {
         name: lead.title || "Unknown",
@@ -112,7 +116,8 @@ export async function POST(request) {
         phone: lead.phoneNumber || lead.phone ? `'${lead.phoneNumber || lead.phone}` : "N/A",
         rating: lead.rating || "N/A",
         reviews: lead.reviews || lead.reviewCount || lead.userRatingCount || "N/A",
-        website: lead.website || lead.link || "No website found"
+        website: lead.website || lead.link || "No website found",
+        coordinates: normalizeCoordinates(lead),
       };
 
       const websiteInspection = inspections[index];
@@ -143,10 +148,8 @@ export async function POST(request) {
     if (formattedLeads.length === 0) {
       console.log("[API] No leads found matching the criteria.");
       warnings.zeroResults = true;
-      warnings.messages.push(`No businesses were returned for ${location}${context.quadrant ? ` ${context.quadrant}` : ""}.`);
     }
-    if (warnings.enrichmentFailures > 0) warnings.messages.push(`${warnings.enrichmentFailures} leads kept partial intelligence because enrichment output was invalid or unavailable.`);
-    if (warnings.contextOverride) warnings.messages.push("The selected ZIP, quadrant, and representative took precedence over conflicting model extraction.");
+    warnings.messages = buildWarningState(warnings).messages;
 
     // Return leads and metadata for the frontend
     return NextResponse.json({

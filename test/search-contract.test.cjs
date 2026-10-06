@@ -8,6 +8,9 @@ const {
   fallbackExtractFromPrompt,
   resolveSearchExtraction,
   buildSearchQuery,
+  normalizeCoordinates,
+  buildWarningState,
+  filterLeadsToContext,
 } = require("../lib/search-contract.cjs");
 
 test("normalizes ZIP, quadrant, rep, and coverage intent without losing the natural-language prompt", () => {
@@ -103,4 +106,40 @@ test("builds a scoped maps query from supply intent instead of generic businesse
   });
 
   assert.equal(query, "businesses that use cleaning, paper, maintenance supplies in ZIP 77096 A1");
+});
+
+test("normalizes valid Serper coordinates and rejects invalid values", () => {
+  assert.deepEqual(normalizeCoordinates({ latitude: "29.6516", longitude: "-95.4278" }), { latitude: 29.6516, longitude: -95.4278 });
+  assert.equal(normalizeCoordinates({ latitude: 0, longitude: 181 }), null);
+  assert.equal(normalizeCoordinates({ lat: "not-a-number", lng: "-95" }), null);
+});
+
+test("builds structured warning state without exposing provider details", () => {
+  const warnings = buildWarningState({
+    extractionFallback: true,
+    openRouterUnavailable: true,
+    serperFailure: true,
+    websiteFailures: 2,
+    enrichmentFailures: 1,
+    zeroResults: true,
+  });
+
+  assert.equal(warnings.extractionFallback, true);
+  assert.equal(warnings.openRouterUnavailable, true);
+  assert.equal(warnings.serperFailure, true);
+  assert.equal(warnings.websiteFailures, 2);
+  assert.equal(warnings.enrichmentFailures, 1);
+  assert.equal(warnings.zeroResults, true);
+  assert.ok(warnings.messages.some((message) => message.includes("OpenRouter")));
+  assert.ok(warnings.messages.some((message) => message.includes("Serper")));
+});
+
+test("filters discovery results that contradict the authoritative ZIP", () => {
+  const results = filterLeadsToContext([
+    { title: "In scope", address: "10 Main St, Houston, TX 77096" },
+    { title: "Out of scope", address: "20 Main St, Houston, TX 77099" },
+    { title: "Unlocated", address: "" },
+  ], { zip: "77096" });
+
+  assert.deepEqual(results.map((lead) => lead.title), ["In scope", "Unlocated"]);
 });
