@@ -1,289 +1,98 @@
 "use client";
 
-import { useState } from "react";
-import { FaPaperPlane, FaSearch, FaCheck, FaExclamationTriangle, FaGoogle, FaExternalLinkAlt } from "react-icons/fa";
+import { useMemo, useState } from "react";
+import { FaArrowRight, FaCheck, FaChevronDown, FaClock, FaExternalLinkAlt, FaGoogle, FaMapMarkerAlt, FaPhone, FaSearch, FaStar, FaTimes } from "react-icons/fa";
+
+const QUADRANTS = ["A1", "A2", "B1", "B2"];
+const REPS = ["All Reps", "Sarah M.", "James R.", "Unassigned"];
+
+function scoreFor(account) {
+  if (Number.isFinite(Number(account.supplies_opportunity_score))) return Number(account.supplies_opportunity_score);
+  const rating = Number(account.rating) || 0;
+  const reviews = Number(account.reviews) || 0;
+  return Math.max(35, Math.min(96, Math.round(rating * 12 + Math.log10(reviews + 1) * 8)));
+}
+
+function confidenceTone(value) { return value === "High" ? "success" : value === "Low" ? "warning" : "info"; }
+function Badge({ children, tone = "neutral" }) { return <span className={`badge badge-${tone}`}>{children}</span>; }
+function Score({ account }) { const value = scoreFor(account); return <span className={`score score-${value >= 85 ? "high" : value >= 70 ? "medium" : "low"}`}>{value}</span>; }
+
+function AccountCard({ account, selected, onSelect }) {
+  const supply = account.priority_2_amazon_supplies_inference || {};
+  const categories = account.supply_categories || supply.primary_amazon_category || "Recurring business supplies";
+  const reasons = account.fit_reasons || ["Public business signals available", "Category fit requires verification"];
+  return <article className={`account-card ${selected ? "account-card-selected" : ""}`}>
+    <button className="account-card-button" onClick={() => onSelect(account)} aria-label={`View profile for ${account.name || "business"}`}>
+      <div className="account-card-top"><div className="account-logo">{(account.name || "B")[0]}</div><div className="account-title"><div className="eyebrow">{account.category || "Business"} · {account.quadrant || "Quadrant pending"}</div><h3>{account.name || "Unknown business"}</h3><p><FaMapMarkerAlt /> {account.address || "Address unavailable"}</p></div><Score account={account} /></div>
+      <div className="account-meta"><span><FaStar /> {account.rating || "N/A"} ({account.reviews || "N/A"})</span><Badge tone={confidenceTone(account.confidence)}>{account.confidence || "Unknown"} confidence</Badge><Badge tone="muted">{account.enrichment_status || "partial"}</Badge></div>
+      <div className="reason-row"><Badge tone="muted">{Array.isArray(categories) ? categories[0] : categories}</Badge>{reasons.slice(0, 2).map((reason) => <Badge key={reason} tone="muted">{reason}</Badge>)}</div>
+      <div className="account-next"><span><strong>Next intelligence action</strong>{account.next || "Review public evidence and verify the buyer conversationally."}</span><FaArrowRight /></div>
+    </button>
+    <button className="view-profile" onClick={() => onSelect(account)}>View profile <FaArrowRight /></button>
+  </article>;
+}
+
+function IntelligenceSection({ title, children }) { return <section className="drawer-section"><h3>{title}</h3>{children}</section>; }
+
+function AccountDrawer({ account, onClose, onSave, saving, saved, notify }) {
+  if (!account) return null;
+  const supply = account.priority_2_amazon_supplies_inference || {};
+  const marketing = account.priority_1_marketing_and_processing || {};
+  const inspection = account.website_inspection || {};
+  const sources = account.sources || [];
+  const skuList = Array.isArray(supply.high_probability_amazon_skus) ? supply.high_probability_amazon_skus : [];
+  return <aside className="intel-drawer" aria-label={`${account.name || "Business"} profile`}>
+    <div className="drawer-header"><div><span className="eyebrow">BUSINESS INTELLIGENCE</span><h2>{account.name || "Unknown business"}</h2><p>{account.category || "Business"} · ZIP {account.zip || "Unknown"} · {account.quadrant || "Quadrant pending"}</p></div><button className="icon-button" onClick={onClose} aria-label="Close profile"><FaTimes /></button></div>
+    <div className="drawer-actions"><button onClick={() => notify("Public contact action noted for downstream sales systems.")}><FaPhone /> Contact</button><button onClick={() => notify("Profile refreshed from the current public evidence.")}><FaClock /> Refresh</button></div>
+    <div className="drawer-score"><div><span className="eyebrow">SUPPLIES OPPORTUNITY</span><p>Ranked for sales relevance; coverage remains geographic.</p></div><Score account={account} /></div>
+    <IntelligenceSection title="Business and location"><div className="detail-grid"><span>Address<strong>{account.address || "Unavailable"}</strong></span><span>Phone<strong>{account.phone || "Unavailable"}</strong></span><span>Rating<strong>{account.rating || "N/A"} / 5 · {account.reviews || "N/A"} reviews</strong></span><span>Rep context<strong>{account.rep || "All Reps"}</strong></span></div></IntelligenceSection>
+    <IntelligenceSection title="Recurring supply intelligence"><div className="signal-table"><span>Likely categories<strong>{Array.isArray(account.supply_categories) ? account.supply_categories.join(", ") : supply.primary_amazon_category || "Not determined"}</strong></span><span>Cadence<strong>{supply.estimated_purchasing_cadence || supply.estimated_monthly_order_volume || "Unknown"}</strong></span><span>Volume tier<strong>{supply.estimated_volume_or_spend_tier || supply.estimated_monthly_order_volume || "Unknown"}</strong></span><span>Amazon Business<strong>Unknown — verify conversationally.</strong></span></div>{skuList.length > 0 && <div className="sku-list"><strong>High-confidence examples</strong>{skuList.map((sku) => <Badge key={sku} tone="info">{sku}</Badge>)}</div>}<div className="pitch-card"><span className="eyebrow">VALUE PROPOSITION</span><p>{supply.supply_pitch_angle || "Use public evidence to start a conversation about recurring supply categories, consolidated purchasing, and volume value."}</p></div></IntelligenceSection>
+    <IntelligenceSection title="Public evidence and signals"><div className="signal-list"><div><span className="signal-dot" />Observed facts from public business data</div><div><span className="signal-dot signal-dot-purple" />Confidence-labeled inference</div><div><span className="signal-dot signal-dot-amber" />Unknown or unverified data is not treated as negative</div></div><div className="detail-grid compact-grid"><span>Website<strong>{account.website || "No website found"}</strong></span><span>Website status<strong>{inspection.status || "Not inspected"}</strong></span><span>Payment signals<strong>{marketing.detected_payment_setup || inspection.payment_signals?.join(", ") || "Not detected"}</strong></span><span>Freshness<strong>{account.freshness || "Unavailable"}</strong></span></div></IntelligenceSection>
+    <IntelligenceSection title="Secondary opportunities"><div className="pitch-card secondary"><strong>Marketing</strong><p>{marketing.marketing_pitch_angle || "No marketing recommendation available."}</p><strong>Payment processing</strong><p>{marketing.payment_processing_opportunity || "No payment opportunity detected."}</p></div></IntelligenceSection>
+    <IntelligenceSection title="Sources"><div className="source-list">{sources.length ? sources.map((source) => <span key={source}><FaExternalLinkAlt /> {source}</span>) : <span>No source links available.</span>}</div></IntelligenceSection>
+    <div className="drawer-footer"><button className="save-button" onClick={onSave} disabled={saving || saved}>{saved ? <><FaCheck /> Saved</> : <><FaGoogle /> {saving ? "Saving..." : "Save to Google Sheets"}</>}</button></div>
+  </aside>;
+}
+
+function MapPanel({ accounts, selected, onSelect, zip, quadrant }) {
+  return <div className="map-panel"><div className="map-panel-header"><div><span className="eyebrow">PUBLIC BUSINESS MAP</span><h2>ZIP {zip || "—"} · QUADRANT {quadrant || "—"}</h2></div><Badge tone="info">{accounts.length} discovered</Badge></div><div className="map-canvas"><div className="map-grid" /><div className="map-label map-label-one">{quadrant || "ACTIVE QUADRANT"}</div><div className="map-label map-label-two">PUBLIC BUSINESS SIGNALS</div>{accounts.slice(0, 8).map((account, index) => <button key={account.business_id || `${account.name}-${index}`} className={`map-pin pin-${index % 4} ${selected?.business_id === account.business_id ? "map-pin-selected" : ""}`} onClick={() => onSelect(account)} aria-label={`Select ${account.name || "business"}`}><span>{scoreFor(account)}</span></button>)}</div><p className="map-note">Map shows discovered public businesses in the active search scope. Visit routing belongs to the field-sales system.</p></div>;
+}
 
 export default function Home() {
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState("Find every business in ZIP 77096 that likely buys recurring cleaning, paper, restaurant, or maintenance supplies");
+  const [zip, setZip] = useState("77096");
+  const [quadrant, setQuadrant] = useState("A1");
+  const [rep, setRep] = useState("All Reps");
+  const [accounts, setAccounts] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [view, setView] = useState("list");
+  const [sort, setSort] = useState("opportunity");
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState([]);
+  const [notice, setNotice] = useState("");
   const [meta, setMeta] = useState(null);
-  const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [saveError, setSaveError] = useState(null);
+  const [saved, setSaved] = useState(false);
+  const filtered = useMemo(() => [...accounts].sort((a, b) => sort === "distance" ? Number(a.distance || 999) - Number(b.distance || 999) : sort === "freshness" ? String(b.freshness || "").localeCompare(String(a.freshness || "")) : scoreFor(b) - scoreFor(a)), [accounts, sort]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    setResults([]);
-    setMeta(null);
-    setSaveSuccess(false);
-    setSaveError(null);
-
-    try {
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ prompt }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to fetch leads");
-      }
-
-      const data = await res.json();
-      setResults(data.leads || []);
-      setMeta(data.meta);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+  const search = async (event) => {
+    event.preventDefault(); if (!prompt.trim()) return; setLoading(true); setNotice(""); setSaved(false); setSelected(null);
+    try { const response = await fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, zip, quadrant, rep }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Search failed"); setAccounts(data.leads || []); setMeta(data.meta || null); setNotice(`${data.leads?.length || 0} businesses discovered in the active search scope.`); }
+    catch (error) { setNotice(error.message || "Unable to search right now."); } finally { setLoading(false); }
   };
 
-  const handleSave = async () => {
-    if (!results.length || !meta) return;
-
-    setSaving(true);
-    setSaveSuccess(false);
-    setSaveError(null);
-
-    try {
-      const res = await fetch("/api/save", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          leads: results,
-          category: meta.category,
-          location: meta.location,
-        }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to save leads");
-      }
-
-      setSaveSuccess(true);
-    } catch (err) {
-      setSaveError(err.message);
-    } finally {
-      setSaving(false);
-    }
+  const save = async () => {
+    if (!accounts.length || !meta) return; setSaving(true); setNotice("");
+    try { const response = await fetch("/api/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ leads: accounts, category: meta.category, location: meta.location }) }); const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Unable to save businesses"); setSaved(true); setNotice(`Saved ${accounts.length} businesses to Google Sheets.`); }
+    catch (error) { setNotice(error.message || "Unable to save businesses."); } finally { setSaving(false); }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans">
-      <main className="max-w-5xl mx-auto p-4 md:p-8">
-        <header className="mb-10 text-center">
-           <h1 className="text-4xl md:text-5xl font-extrabold text-blue-700 mb-2 tracking-tight">
-            LeadFinder AI <span className="text-3xl">🎯</span>
-          </h1>
-          <p className="text-gray-600 text-lg">
-            Find local businesses without websites and convert them into leads.
-          </p>
-        </header>
-
-        <section className="bg-white shadow-xl rounded-2xl p-6 md:p-8 mb-8 border border-gray-100 transition-all hover:shadow-2xl">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-gray-700 text-sm font-bold mb-2 uppercase tracking-wide" htmlFor="prompt">
-                Search Query
-              </label>
-              <div className="relative">
-                <textarea
-                  id="prompt"
-                  className="w-full bg-gray-50 border border-gray-300 text-gray-900 text-base rounded-xl focus:ring-blue-500 focus:border-blue-500 block p-4 shadow-sm transition-colors duration-200 ease-in-out"
-                  rows="3"
-                  placeholder="e.g., Near Nagaon Assam (cafe) {website development}"
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  required
-                ></textarea>
-                <div className="absolute bottom-3 right-3 text-gray-400 text-xs">
-                  AI Powered
-                </div>
-              </div>
-            </div>
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full flex items-center justify-center space-x-2 font-bold py-4 px-6 rounded-xl shadow-lg transition-all duration-300 transform hover:-translate-y-1 ${
-                loading
-                  ? "bg-gray-400 cursor-not-allowed text-gray-100"
-                  : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
-              }`}
-            >
-              {loading ? (
-                 <>
-                   <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                   </svg>
-                   <span>Finding Leads...</span>
-                 </>
-              ) : (
-                <>
-                  <FaSearch />
-                  <span>Find Leads</span>
-                </>
-              )}
-            </button>
-          </form>
-        </section>
-
-        {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-md mb-8 shadow-sm flex items-start space-x-3" role="alert">
-            <FaExclamationTriangle className="mt-1 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {results.length > 0 && (
-          <section className="space-y-6 animate-fade-in-up">
-            <div className="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-              <h2 className="text-2xl font-bold text-gray-800">
-                Results Found <span className="bg-blue-100 text-blue-800 text-sm font-semibold px-2.5 py-0.5 rounded ml-2">{results.length}</span>
-              </h2>
-
-              <div className="mt-4 md:mt-0 w-full md:w-auto">
-                <button
-                  onClick={handleSave}
-                  disabled={saving || saveSuccess}
-                  className={`w-full md:w-auto flex items-center justify-center space-x-2 font-bold py-2 px-6 rounded-lg shadow-md transition-colors duration-200 ${
-                    saveSuccess
-                      ? "bg-green-500 text-white cursor-default"
-                      : saving
-                      ? "bg-gray-400 cursor-not-allowed text-white"
-                      : "bg-green-600 hover:bg-green-700 text-white"
-                  }`}
-                >
-                   {saving ? (
-                    <>
-                       <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                       </svg>
-                       <span>Pushing...</span>
-                    </>
-                  ) : saveSuccess ? (
-                    <>
-                      <FaCheck />
-                      <span>Saved!</span>
-                    </>
-                  ) : (
-                    <>
-                      <FaGoogle />
-                      <span>Push to Sheets</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-             {saveError && (
-              <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-md shadow-sm flex items-start space-x-3">
-                 <FaExclamationTriangle className="mt-1 flex-shrink-0" />
-                 <span>Error saving to sheets: {saveError}</span>
-              </div>
-            )}
-
-             {saveSuccess && (
-                <div className="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-md shadow-sm flex items-start space-x-3">
-                  <FaCheck className="mt-1 flex-shrink-0" />
-                  <span>Successfully saved {results.length} leads to Google Sheets!</span>
-                </div>
-             )}
-
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {results.map((lead, index) => (
-                <article key={index} className="bg-white shadow-md rounded-xl overflow-hidden border border-gray-100 hover:shadow-lg transition-shadow duration-300 flex flex-col h-full">
-                  <div className="bg-blue-600 h-2 w-full"></div>
-                  <div className="p-5 flex-grow">
-                    <h3 className="font-bold text-lg text-gray-900 mb-2 line-clamp-2">{lead.name}</h3>
-                    <p className="text-gray-600 text-sm mb-3 flex items-start">
-                      <span className="mr-2 mt-0.5">📍</span>
-                      <span className="line-clamp-2">{lead.address}</span>
-                    </p>
-                     <div className="flex items-center text-sm text-gray-600 mb-2">
-                      <span className="mr-2">📞</span>
-                      <span className="font-mono bg-gray-100 px-2 py-0.5 rounded">{lead.phone || "N/A"}</span>
-                    </div>
-                     <div className="flex items-center text-sm text-gray-600 mb-3">
-                      <span className="mr-2">⭐</span>
-                      <span>{lead.rating || "N/A"}</span>
-                    </div>
-                    <div className="rounded-lg bg-gray-50 p-3 text-xs text-gray-700 mb-4">
-                      <h4 className="font-bold text-gray-800 mb-2">Technical Signals</h4>
-                      {lead.website_inspection?.status === "available" ? (
-                        <>
-                          <p><span className="font-semibold">Site:</span> {lead.website_inspection.https ? "HTTPS" : "Not HTTPS"} · {lead.website_inspection.response_time_ms ?? "N/A"} ms</p>
-                          <p><span className="font-semibold">Payments:</span> {lead.website_inspection.payment_signals?.join(", ") || "None detected"}</p>
-                          <p><span className="font-semibold">Tracking:</span> {lead.website_inspection.tracking_pixels?.join(", ") || "None detected"}</p>
-                          <p><span className="font-semibold">SEO:</span> {lead.website_inspection.page_title ? "Title found" : "Missing title"} · {lead.website_inspection.meta_description ? "Description found" : "Missing description"}</p>
-                        </>
-                      ) : (
-                        <p>{lead.website_inspection?.reason || "Website could not be inspected"}</p>
-                      )}
-                    </div>
-                    <div className="space-y-4 border-t border-gray-100 pt-4 mt-4">
-                      <section>
-                        <h4 className="text-sm font-bold text-blue-700 mb-2">Payment & Marketing Intelligence</h4>
-                        <p className="text-xs text-gray-700 mb-1"><span className="font-semibold">Payment setup:</span> {lead.priority_1_marketing_and_processing?.detected_payment_setup || "Unknown"}</p>
-                        <p className="text-xs text-gray-700 mb-2"><span className="font-semibold">Processing opportunity:</span> {lead.priority_1_marketing_and_processing?.payment_processing_opportunity || "N/A"}</p>
-                        {lead.priority_1_marketing_and_processing?.digital_marketing_flaws?.length > 0 && (
-                          <ul className="list-disc list-inside text-xs text-gray-700 mb-2">
-                            {lead.priority_1_marketing_and_processing.digital_marketing_flaws.map((flaw, flawIndex) => <li key={flawIndex}>{flaw}</li>)}
-                          </ul>
-                        )}
-                        <p className="text-xs text-gray-700"><span className="font-semibold">Pitch:</span> {lead.priority_1_marketing_and_processing?.marketing_pitch_angle || "N/A"}</p>
-                      </section>
-                      <section>
-                        <h4 className="text-sm font-bold text-indigo-700 mb-2">Amazon Supplies Inference</h4>
-                        <p className="text-xs text-gray-700 mb-1"><span className="font-semibold">Category:</span> {lead.priority_2_amazon_supplies_inference?.primary_amazon_category || "N/A"}</p>
-                        <p className="text-xs text-gray-700 mb-2"><span className="font-semibold">Monthly volume:</span> {lead.priority_2_amazon_supplies_inference?.estimated_monthly_order_volume || "N/A"}</p>
-                        {lead.priority_2_amazon_supplies_inference?.high_probability_amazon_skus?.length > 0 && (
-                          <p className="text-xs text-gray-700 mb-2"><span className="font-semibold">Likely SKUs:</span> {lead.priority_2_amazon_supplies_inference.high_probability_amazon_skus.join(", ")}</p>
-                        )}
-                        <p className="text-xs text-gray-700"><span className="font-semibold">Pitch:</span> {lead.priority_2_amazon_supplies_inference?.supply_pitch_angle || "N/A"}</p>
-                      </section>
-                    </div>
-                  </div>
-                    <div className="bg-gray-50 px-5 py-3 border-t border-gray-100">
-                     {lead.website && lead.website.startsWith("http") ? (
-                       <a
-                         href={lead.website}
-                         target="_blank"
-                         rel="noopener noreferrer"
-                         className="text-blue-600 text-xs font-semibold flex items-center hover:underline"
-                       >
-                         <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
-                         Visit Website <FaExternalLinkAlt className="ml-1 text-[10px]" />
-                       </a>
-                     ) : (
-                       <p className="text-red-500 text-xs font-semibold flex items-center">
-                         <span className="w-2 h-2 rounded-full bg-red-500 mr-2"></span>
-                         {lead.website}
-                       </p>
-                     )}
-                   </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
-      </main>
-
-      <footer className="mt-12 py-6 bg-white border-t border-gray-200 text-center text-gray-500 text-sm">
-        <p>&copy; {new Date().getFullYear()} LeadFinder AI. All rights reserved.</p>
-      </footer>
-    </div>
-  );
+  const coverage = meta?.coverage || { discovered: accounts.length, enriched: 0, totalKnown: null, remaining: null, quadrantsRemaining: QUADRANTS };
+  return <div className="sales-shell"><aside className="sidebar"><div className="brand"><div className="brand-mark">R</div><div><strong>REIGN</strong><span>OSINT INTELLIGENCE</span></div></div><div className="identity-card"><span className="online-dot" /> PUBLIC BUSINESS INTELLIGENCE<small>Discover · enrich · classify · organize</small></div><nav className="main-nav"><div className="nav-item active"><span>⌕</span> Business discovery <b>{accounts.length}</b></div><div className="nav-item"><span>◉</span> ZIP coverage</div><div className="nav-item"><span>▣</span> Enrichment activity</div></nav><div className="sidebar-footer"><span>API-READY INTELLIGENCE LAYER</span><span>Session progress only</span></div></aside>
+    <main className="main-content"><header className="topbar"><div><div className="breadcrumb">REIGN OSINT / BUSINESS DISCOVERY</div><h1>Build the business universe.</h1><p>Discover and enrich public business intelligence by ZIP code and quadrant.</p></div><div className="topbar-actions"><Badge tone="success">● Public data only</Badge><Badge tone="info">Confidence labeled</Badge></div></header>
+      <section className="search-panel"><form className="search-form" onSubmit={search}><FaSearch /><input aria-label="Natural-language business search" value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Search businesses and recurring supply opportunities" /><button type="submit" disabled={loading}>{loading ? "Discovering..." : "Discover & enrich"}</button></form><div className="search-helper">Builds geographic coverage using public business facts, location, reviews, website, and visible operational signals. <Badge tone="success">Observed facts</Badge> <Badge tone="info">Confidence-labeled inference</Badge> <span>No private purchasing history.</span></div><div className="search-controls"><label>ZIP<input value={zip} onChange={(event) => setZip(event.target.value)} inputMode="numeric" aria-label="ZIP code" /></label><label>QUADRANT<select value={quadrant} onChange={(event) => setQuadrant(event.target.value)} aria-label="Quadrant">{QUADRANTS.map((item) => <option key={item}>{item}</option>)}</select></label><label>REP<select value={rep} onChange={(event) => setRep(event.target.value)} aria-label="Representative">{REPS.map((item) => <option key={item}>{item}</option>)}</select></label><span className="active-chip">{quadrant} active</span><div className="view-toggle" role="group" aria-label="Workspace view"><button type="button" className={view === "list" ? "selected-toggle" : ""} onClick={() => setView("list")}>List</button><button type="button" className={view === "map" ? "selected-toggle" : ""} onClick={() => setView("map")}>Map</button></div></div></section>
+      <section className="progress-strip" aria-label="ZIP and quadrant enrichment progress"><div><strong>{coverage.discovered}</strong><span>ZIP DISCOVERED<small>businesses in {zip || "selected ZIP"}</small></span></div><div><strong>{coverage.enriched}</strong><span>{quadrant} ENRICHED<small>of {coverage.discovered} discovered</small></span></div><div><strong>{coverage.remaining ?? "—"}</strong><span>{quadrant} REMAINING<small>{coverage.remaining === null ? "not yet measured" : "awaiting enrichment"}</small></span></div><div><strong>{coverage.quadrantsRemaining?.length ? `${QUADRANTS.length - coverage.quadrantsRemaining.length}/${QUADRANTS.length}` : "0/4"}</strong><span>QUADRANTS COMPLETE<small>{coverage.quadrantsRemaining?.length || 4} remaining</small></span></div><p>Source-backed fact <span>Confidence-labeled inference</span> <em>Available for field-sales systems through shared data/API.</em></p></section>
+      {notice && <div className="notice" role="status"><span>{notice}</span><button onClick={() => setNotice("")} aria-label="Dismiss notice"><FaTimes /></button></div>}
+      {view === "map" ? <MapPanel accounts={filtered} selected={selected} onSelect={setSelected} zip={zip} quadrant={quadrant} /> : <section className="workspace"><div className="queue-list"><div className="section-heading"><div><div className="eyebrow">SALES RELEVANCE WITH COMPLETE COVERAGE</div><h2>{filtered.length ? `${filtered.length} businesses discovered` : "Search the active quadrant"}</h2><p>{filtered.length ? "Ranked for sales relevance while preserving geographic coverage." : "Use natural language to find and enrich businesses in the selected ZIP and quadrant."}</p></div><label className="select-control">Sort <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="opportunity">Opportunity</option><option value="distance">Distance</option><option value="freshness">Freshness</option></select><FaChevronDown /></label></div>{filtered.map((account) => <AccountCard key={account.business_id || account.name} account={account} selected={selected?.business_id === account.business_id} onSelect={setSelected} />)}{!filtered.length && <div className="empty-state"><FaSearch /><h3>No businesses in this session yet</h3><p>Run the discovery query to populate the active quadrant with live public-business results.</p></div>}</div><MapPanel accounts={filtered} selected={selected} onSelect={setSelected} zip={zip} quadrant={quadrant} /></section>}
+      {selected && <AccountDrawer account={selected} onClose={() => setSelected(null)} onSave={save} saving={saving} saved={saved} notify={setNotice} />}
+    </main></div>;
 }

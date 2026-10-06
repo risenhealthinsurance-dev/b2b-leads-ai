@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { analyzeLead, extractDataFromPrompt } from "@/lib/ai";
 import { searchMapsViaSerper } from "@/lib/serper";
 import { inspectWebsites } from "@/lib/website";
+import searchContract from "@/lib/search-contract.cjs";
+
+const { normalizeSearchContext, buildSearchMeta, normalizeLeadRecord } = searchContract;
 
 function buildValidationError(detail) {
   const error = new Error(`Error: Invalid input validation failed - ${detail}`);
@@ -49,7 +52,15 @@ export async function POST(request) {
       throw error;
     }
 
-    const location = typeof extracted.location === "string" ? extracted.location.trim() : "";
+    const context = normalizeSearchContext({
+      prompt,
+      zip: body?.zip || extracted.zip,
+      quadrant: body?.quadrant || extracted.quadrant,
+      rep: body?.rep || extracted.rep,
+    });
+    context.coverageIntent = context.coverageIntent || Boolean(extracted.coverage_intent);
+
+    const location = typeof extracted.location === "string" ? extracted.location.trim() : context.zip ? `ZIP ${context.zip}` : "";
     const category = typeof extracted.category === "string" ? extracted.category.trim() : "";
     const intent = typeof extracted.intent === "string" ? extracted.intent.trim() : "";
     const requiresMissingWebsite = !!extracted.requires_missing_website;
@@ -63,7 +74,7 @@ export async function POST(request) {
     console.log("[API] Starting Serper search step.");
     let localResults;
     try {
-      localResults = await searchMapsViaSerper(category, location);
+      localResults = await searchMapsViaSerper(category, location, context);
     } catch (error) {
       console.error("[API] searchMapsViaSerper failed:", error);
       throw error;
@@ -104,7 +115,17 @@ export async function POST(request) {
         website: formattedLead.website
       }, websiteInspection);
 
-      return { ...formattedLead, website_inspection: websiteInspection, ...intelligence };
+      const sources = ["Google Maps"];
+      if (websiteInspection?.status === "available" || websiteInspection?.status === "http_error") sources.push("Website inspection");
+      const normalized = normalizeLeadRecord({
+        ...formattedLead,
+        website_inspection: websiteInspection,
+        sources,
+        freshness: new Date().toISOString(),
+        ...intelligence,
+      }, index, context);
+      normalized.enrichment_status = websiteInspection?.status === "available" ? "enriched" : "partial";
+      return normalized;
     }));
 
     if (formattedLeads.length === 0) {
@@ -114,7 +135,7 @@ export async function POST(request) {
     // Return leads and metadata for the frontend
     return NextResponse.json({
       leads: formattedLeads,
-      meta: { location, category, intent }
+      meta: buildSearchMeta({ location, category, intent, context, leads: formattedLeads })
     });
   } catch (error) {
     const status = normalizeStatus(error);

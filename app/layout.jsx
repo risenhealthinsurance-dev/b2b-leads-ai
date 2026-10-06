@@ -1,14 +1,14 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "LeadFinder AI",
-  description: "Find local business leads efficiently.",
+  title: "REIGN OSINT | Business Discovery",
+  description: "Discover and enrich public business intelligence by ZIP code and quadrant.",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className="bg-gray-50 min-h-screen text-gray-900">{children}</body>
+      <body className="min-h-screen">{children}</body>
     </html>
   );
 }
