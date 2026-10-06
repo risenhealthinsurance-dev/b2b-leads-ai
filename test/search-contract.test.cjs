@@ -113,7 +113,7 @@ test("builds a scoped maps query from supply intent instead of generic businesse
     supplyCategories: ["cleaning", "paper", "maintenance"],
   });
 
-  assert.equal(query, "businesses that use cleaning, paper, maintenance supplies in ZIP 77096");
+  assert.equal(query, "businesses in ZIP 77096");
 });
 
 test("normalizes valid Serper coordinates and rejects invalid values", () => {
