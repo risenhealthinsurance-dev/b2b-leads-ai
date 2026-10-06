@@ -14,11 +14,22 @@ const {
   getMapCoordinates,
 } = require("../lib/search-contract.cjs");
 const { validateSearchPrompt } = require("../lib/search-validation.cjs");
+const { resolveAuthoritativeZip, buildWarningDetails } = require("../lib/search-contract.cjs");
 
 test("requires a non-whitespace search prompt", () => {
   assert.deepEqual(validateSearchPrompt(""), { valid: false, error: "Search prompt is required." });
   assert.deepEqual(validateSearchPrompt("   \n"), { valid: false, error: "Search prompt is required." });
   assert.deepEqual(validateSearchPrompt("Find businesses"), { valid: true, error: "" });
+});
+
+test("prompt ZIP overrides the dedicated ZIP while preserving field-only ZIP behavior", () => {
+  assert.deepEqual(resolveAuthoritativeZip("Find businesses in ZIP 77096", "77099"), { zip: "77096", promptZip: "77096", overridden: true });
+  assert.deepEqual(resolveAuthoritativeZip("Find businesses in Houston", "77099"), { zip: "77099", promptZip: "", overridden: false });
+});
+
+test("warning details are structured for concise UI summaries", () => {
+  const details = buildWarningDetails({ extractionFallback: true, websiteFailures: 2, enrichmentFailures: 1 });
+  assert.deepEqual(details.map((item) => item.code), ["extraction-fallback", "website-inspection", "enrichment-partial"]);
 });
 
 test("normalizes ZIP, quadrant, rep, and coverage intent without losing the natural-language prompt", () => {

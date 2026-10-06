@@ -4,7 +4,7 @@ import { searchMapsViaSerper } from "@/lib/serper";
 import { inspectWebsites } from "@/lib/website";
 import searchContract from "@/lib/search-contract.cjs";
 
-const { normalizeSearchContext, buildSearchMeta, buildWarningState, filterLeadsToContext, normalizeCoordinates, normalizeLeadRecord, resolveSearchExtraction } = searchContract;
+const { normalizeSearchContext, buildSearchMeta, buildWarningState, buildWarningDetails, filterLeadsToContext, normalizeCoordinates, normalizeLeadRecord, resolveSearchExtraction } = searchContract;
 
 function buildValidationError(detail) {
   const error = new Error(`Error: Invalid input validation failed - ${detail}`);
@@ -84,9 +84,11 @@ export async function POST(request) {
     } catch (error) {
       console.error("[API] searchMapsViaSerper failed:", error);
       const status = normalizeStatus(error);
+      const failureWarnings = buildWarningState({ ...warnings, serperFailure: true });
+      failureWarnings.details = buildWarningDetails({ ...warnings, serperFailure: true, serperDetail: error?.message });
       return NextResponse.json({
         leads: [],
-        meta: buildSearchMeta({ location, category, intent, context, leads: [], warnings: buildWarningState({ ...warnings, serperFailure: true }) }),
+        meta: buildSearchMeta({ location, category, intent, context, leads: [], warnings: failureWarnings, source: { extraction: extracted?._warning ? "deterministic-fallback" : "openrouter", enrichment: "unavailable" } }),
         error: error?.message || "Serper business discovery failed.",
         statusCode: status,
       }, { status });
@@ -150,11 +152,12 @@ export async function POST(request) {
       warnings.zeroResults = true;
     }
     warnings.messages = buildWarningState(warnings).messages;
+    warnings.details = buildWarningDetails({ ...warnings, extractionDetail: extracted?._warning });
 
     // Return leads and metadata for the frontend
     return NextResponse.json({
       leads: formattedLeads,
-      meta: buildSearchMeta({ location, category, intent, context, leads: formattedLeads, warnings })
+      meta: buildSearchMeta({ location, category, intent, context, leads: formattedLeads, warnings, source: { extraction: extracted?._warning ? "deterministic-fallback" : "openrouter", enrichment: warnings.enrichmentFailures || warnings.websiteFailures ? "partial" : "openrouter" } })
     });
   } catch (error) {
     const status = normalizeStatus(error);
