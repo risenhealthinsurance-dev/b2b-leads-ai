@@ -20,6 +20,10 @@ export async function POST(request) {
       );
     }
 
+    if (process.env.GOOGLE_SHEETS_DRY_RUN === "true") {
+      return NextResponse.json({ success: true, dryRun: true, count: leads.length });
+    }
+
     await saveLeadsToGoogleSheet(leads, category, location);
 
     return NextResponse.json({ success: true, count: leads.length });

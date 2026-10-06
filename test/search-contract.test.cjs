@@ -13,6 +13,13 @@ const {
   filterLeadsToContext,
   getMapCoordinates,
 } = require("../lib/search-contract.cjs");
+const { validateSearchPrompt } = require("../lib/search-validation.cjs");
+
+test("requires a non-whitespace search prompt", () => {
+  assert.deepEqual(validateSearchPrompt(""), { valid: false, error: "Search prompt is required." });
+  assert.deepEqual(validateSearchPrompt("   \n"), { valid: false, error: "Search prompt is required." });
+  assert.deepEqual(validateSearchPrompt("Find businesses"), { valid: true, error: "" });
+});
 
 test("normalizes ZIP, quadrant, rep, and coverage intent without losing the natural-language prompt", () => {
   const result = normalizeSearchContext({
