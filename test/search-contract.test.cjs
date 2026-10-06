@@ -11,6 +11,7 @@ const {
   normalizeCoordinates,
   buildWarningState,
   filterLeadsToContext,
+  getMapCoordinates,
 } = require("../lib/search-contract.cjs");
 
 test("normalizes ZIP, quadrant, rep, and coverage intent without losing the natural-language prompt", () => {
@@ -142,4 +143,9 @@ test("filters discovery results that contradict the authoritative ZIP", () => {
   ], { zip: "77096" });
 
   assert.deepEqual(results.map((lead) => lead.title), ["In scope", "Unlocated"]);
+});
+
+test("provides a safe visual map fallback when a lead has no coordinates", () => {
+  assert.deepEqual(getMapCoordinates({ coordinates: { latitude: 29.7, longitude: -95.4 } }, 0), [-95.4, 29.7]);
+  assert.deepEqual(getMapCoordinates({}, 5), [-95.38, 29.655]);
 });
