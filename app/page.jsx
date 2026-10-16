@@ -12,7 +12,7 @@ const REPS = ["All Reps", "Sarah M.", "James R.", "Unassigned"];
 const { resolveAuthoritativeZip } = searchContract;
 
 function scoreFor(account) {
-  if (Number.isFinite(Number(account.supplies_opportunity_score))) return Number(account.supplies_opportunity_score);
+  if (Number.isFinite(Number(account.opportunity_score))) return Number(account.opportunity_score);
   const rating = Number(account.rating) || 0;
   const reviews = Number(account.reviews) || 0;
   return Math.max(35, Math.min(96, Math.round(rating * 12 + Math.log10(reviews + 1) * 8)));
@@ -35,8 +35,8 @@ function Badge({ children, tone = "neutral" }) { return <span className={`badge 
 function Score({ account }) { const value = scoreFor(account); return <span className={`score score-${value >= 85 ? "high" : value >= 70 ? "medium" : "low"}`}>{value}</span>; }
 
 function AccountCard({ account, selected, onSelect }) {
-  const supply = account.priority_2_amazon_supplies_inference || {};
-  const categories = account.supply_categories || supply.primary_amazon_category || "Recurring business supplies";
+  const intelligence = account.payment_and_ordering_intelligence || {};
+  const categories = intelligence.website_ordering_status || "Ordering status unknown";
   const reasons = account.fit_reasons || ["Public business signals available", "Category fit requires verification"];
   return <article className={`account-card ${selected ? "account-card-selected" : ""}`}>
     <button className="account-card-button" data-testid="account-card-button" onClick={() => onSelect(account)} aria-label={`View profile for ${account.name || "business"}`}>
@@ -53,19 +53,16 @@ function IntelligenceSection({ title, children }) { return <section className="d
 
 function AccountDrawer({ account, onClose, onSave, saving, saved, notify }) {
   if (!account) return null;
-  const supply = account.priority_2_amazon_supplies_inference || {};
-  const marketing = account.priority_1_marketing_and_processing || {};
+  const intelligence = account.payment_and_ordering_intelligence || {};
   const inspection = account.website_inspection || {};
   const sources = account.sources || [];
-  const skuList = Array.isArray(supply.high_probability_amazon_skus) ? supply.high_probability_amazon_skus : [];
   return <aside className="intel-drawer" data-testid="profile-drawer" aria-label={`${account.name || "Business"} profile`}>
     <div className="drawer-header"><div><span className="eyebrow">BUSINESS INTELLIGENCE</span><h2>{account.name || "Unknown business"}</h2><p>{account.category || "Business"} · ZIP {account.zip || "Unknown"} · {account.quadrant || "Quadrant pending"}</p></div><button className="icon-button" data-testid="profile-close-button" onClick={onClose} aria-label="Close profile"><FaTimes /></button></div>
     <div className="drawer-actions"><button onClick={() => notify("Public contact action noted for downstream sales systems.")}><FaPhone /> Contact</button><button onClick={() => notify("Profile refreshed from the current public evidence.")}><FaClock /> Refresh</button></div>
-    <div className="drawer-score"><div><span className="eyebrow">SUPPLIES OPPORTUNITY</span><p>Ranked for sales relevance; coverage remains geographic.</p></div><Score account={account} /></div>
+    <div className="drawer-score"><div><span className="eyebrow">PAYMENT &amp; ORDERING OPPORTUNITY</span><p>Ranked from public POS and website-ordering evidence.</p></div><Score account={account} /></div>
     <IntelligenceSection title="Business and location"><div className="detail-grid"><span>Address<strong>{account.address || "Unavailable"}</strong></span><span>Coordinates<strong data-testid="profile-coordinates">{coordinateLabel(account)}</strong></span><span>Phone<strong>{account.phone || "Unavailable"}</strong></span><span>Rating<strong>{account.rating || "N/A"} / 5 · {account.reviews || "N/A"} reviews</strong></span><span>Rep context<strong>{account.rep || "All Reps"}</strong></span></div></IntelligenceSection>
-    <IntelligenceSection title="Recurring supply intelligence"><div className="signal-table"><span>Likely categories<strong>{Array.isArray(account.supply_categories) ? account.supply_categories.join(", ") : supply.primary_amazon_category || "Not determined"}</strong></span><span>Cadence<strong>{supply.estimated_purchasing_cadence || supply.estimated_monthly_order_volume || "Unknown"}</strong></span><span>Volume tier<strong>{supply.estimated_volume_or_spend_tier || supply.estimated_monthly_order_volume || "Unknown"}</strong></span><span>Amazon Business<strong>Unknown — verify conversationally.</strong></span></div>{skuList.length > 0 && <div className="sku-list"><strong>High-confidence examples</strong>{skuList.map((sku) => <Badge key={sku} tone="info">{sku}</Badge>)}</div>}<div className="pitch-card"><span className="eyebrow">VALUE PROPOSITION</span><p>{supply.supply_pitch_angle || "Use public evidence to start a conversation about recurring supply categories, consolidated purchasing, and volume value."}</p></div></IntelligenceSection>
-    <IntelligenceSection title="Public evidence and signals"><div className="signal-list"><div><span className="signal-dot" />Observed facts from public business data</div><div><span className="signal-dot signal-dot-purple" />Confidence-labeled inference</div><div><span className="signal-dot signal-dot-amber" />Unknown or unverified data is not treated as negative</div></div><div className="detail-grid compact-grid"><span>Website<strong>{account.website || "No website found"}</strong></span><span>Website status<strong>{inspection.status || "Not inspected"}</strong></span><span>Payment signals<strong>{marketing.detected_payment_setup || inspection.payment_signals?.join(", ") || "Not detected"}</strong></span><span>Freshness<strong>{account.freshness || "Unavailable"}</strong></span></div></IntelligenceSection>
-    <IntelligenceSection title="Secondary opportunities"><div className="pitch-card secondary"><strong>Marketing</strong><p>{marketing.marketing_pitch_angle || "No marketing recommendation available."}</p><strong>Payment processing</strong><p>{marketing.payment_processing_opportunity || "No payment opportunity detected."}</p></div></IntelligenceSection>
+    <IntelligenceSection title="POS and ordering intelligence"><div className="signal-table"><span>POS / payment processor<strong>{intelligence.detected_payment_setup || inspection.payment_signals?.join(", ") || "Not detected"}</strong></span><span>Payment evidence<strong>{intelligence.payment_processor_evidence?.join(" · ") || "No specific evidence"}</strong></span><span>Website ordering<strong>{intelligence.website_ordering_status || "Not detected"}</strong></span><span>Ordering platform<strong>{intelligence.ordering_platform || "Unknown"}</strong></span><span>Delivery<strong>{intelligence.delivery_capability || "Not detected"}</strong></span></div><div className="pitch-card"><span className="eyebrow">SALES OPPORTUNITY</span><p>{intelligence.ordering_sales_opportunity || "Review whether ordering can be brought onto the restaurant's own website."}</p><p>{intelligence.payment_processing_opportunity || "No payment opportunity detected."}</p></div></IntelligenceSection>
+    <IntelligenceSection title="Public evidence and signals"><div className="signal-list"><div><span className="signal-dot" />Observed facts from public business data</div><div><span className="signal-dot signal-dot-purple" />Confidence-labeled inference</div><div><span className="signal-dot signal-dot-amber" />Unknown or unverified data is not treated as negative</div></div><div className="detail-grid compact-grid"><span>Website<strong>{account.website || "No website found"}</strong></span><span>Website status<strong>{inspection.status || "Not inspected"}</strong></span><span>Ordering evidence<strong>{intelligence.ordering_evidence?.join(" · ") || "Not detected"}</strong></span><span>Freshness<strong>{account.freshness || "Unavailable"}</strong></span></div></IntelligenceSection>
     <IntelligenceSection title="Sources"><div className="source-list">{sources.length ? sources.map((source) => <span key={source}><FaExternalLinkAlt /> {source}</span>) : <span>No source links available.</span>}</div></IntelligenceSection>
     <div className="drawer-footer"><button className="save-button" data-testid="save-to-sheets-button" onClick={onSave} disabled={saving || saved}>{saved ? <><FaCheck /> Saved</> : <><FaGoogle /> {saving ? "Saving..." : "Save to Google Sheets"}</>}</button></div>
   </aside>;
@@ -80,7 +77,8 @@ function MapCanvas({ accounts, selected, onSelect, zip, quadrant }) {
   useEffect(() => {
     if (!token || !containerRef.current) return undefined;
     mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({ container: containerRef.current, style: "mapbox://styles/mapbox/dark-v11", center: [-95.43, 29.65], zoom: 11.2, attributionControl: true });
+    const initialCenter = locatedAccounts[0] ? mapCoordinates(locatedAccounts[0]) : [-95.43, 29.65];
+    const map = new mapboxgl.Map({ container: containerRef.current, style: "mapbox://styles/mapbox/dark-v11", center: initialCenter, zoom: locatedAccounts.length === 1 ? 13 : 4, attributionControl: true });
     mapRef.current = map;
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
     map.once("load", () => {
@@ -89,7 +87,10 @@ function MapCanvas({ accounts, selected, onSelect, zip, quadrant }) {
       });
     });
     map.on("load", () => {
-      locatedAccounts.slice(0, 8).forEach((account) => {
+      const bounds = new mapboxgl.LngLatBounds();
+      locatedAccounts.forEach((account) => {
+        const coordinates = mapCoordinates(account);
+        bounds.extend(coordinates);
         const marker = document.createElement("button");
         marker.className = `mapbox-score-marker ${selected?.business_id === account.business_id ? "mapbox-score-marker-selected" : ""}`;
         marker.type = "button";
@@ -98,21 +99,23 @@ function MapCanvas({ accounts, selected, onSelect, zip, quadrant }) {
         marker.addEventListener("click", () => onSelect(account));
         new mapboxgl.Marker({ element: marker, anchor: "bottom" }).setLngLat(mapCoordinates(account)).addTo(map);
       });
+      if (locatedAccounts.length > 1 && !bounds.isEmpty()) map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 0 });
     });
     return () => { map.remove(); mapRef.current = null; };
   }, [locatedAccounts, onSelect, selected?.business_id, token]);
 
   if (token) return <div ref={containerRef} data-testid="map-container" className="map-canvas mapbox-canvas" aria-label={`Mapbox map of ${zip || "selected ZIP"} ${quadrant || "active quadrant"}`} />;
-      return <div className="map-canvas" data-testid="map-container" aria-label={`Map preview of ${zip || "selected ZIP"} ${quadrant || "active quadrant"}`}><div className="map-grid" /><div className="map-label map-label-one">{quadrant || "ACTIVE QUADRANT"}</div><div className="map-label map-label-two">PUBLIC BUSINESS SIGNALS</div>{locatedAccounts.slice(0, 8).map((account, index) => <button key={account.business_id || `${account.name}-${index}`} className={`map-pin pin-${index % 4} ${selected?.business_id === account.business_id ? "map-pin-selected" : ""}`} onClick={() => onSelect(account)} aria-label={`Select ${account.name || "business"}`}><span>{scoreFor(account)}</span></button>)}</div>;
+      return <div className="map-canvas" data-testid="map-container" aria-label={`Map preview of ${zip || "selected ZIP"} ${quadrant || "active quadrant"}`}><div className="map-grid" /><div className="map-label map-label-one">{quadrant || "ACTIVE QUADRANT"}</div><div className="map-label map-label-two">PUBLIC BUSINESS SIGNALS</div>{locatedAccounts.map((account, index) => <button key={account.business_id || `${account.name}-${index}`} className={`map-pin pin-${index % 4} ${selected?.business_id === account.business_id ? "map-pin-selected" : ""}`} onClick={() => onSelect(account)} aria-label={`Select ${account.name || "business"} at ${coordinateLabel(account)}`}><span>{scoreFor(account)}</span></button>)}</div>;
 }
 
 function MapPanel({ accounts, selected, onSelect, zip, quadrant }) {
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
-  return <div className="map-panel"><div className="map-panel-header"><div><span className="eyebrow">PUBLIC BUSINESS MAP</span><h2>ZIP {zip || "—"} · QUADRANT {quadrant || "—"}</h2></div><Badge tone="info">{accounts.length} discovered</Badge></div><MapCanvas accounts={accounts} selected={selected} onSelect={onSelect} zip={zip} quadrant={quadrant} />{!token && <p className="map-config-note">Mapbox token not configured; showing the accessible visual map fallback.</p>}<p className="map-note">Map shows discovered public businesses in the active search scope. Visit routing belongs to the field-sales system.</p></div>;
+  const mappedCount = accounts.filter((account) => mapCoordinates(account) !== null).length;
+  return <div className="map-panel"><div className="map-panel-header"><div><span className="eyebrow">PUBLIC BUSINESS MAP</span><h2>ZIP {zip || "—"} · QUADRANT {quadrant || "—"}</h2></div><Badge tone="info">{accounts.length} discovered</Badge></div><p data-testid="map-status" className="map-note">{accounts.length} results · {mappedCount} mapped · {accounts.length - mappedCount} without verified coordinates</p><MapCanvas accounts={accounts} selected={selected} onSelect={onSelect} zip={zip} quadrant={quadrant} />{!token && <p className="map-config-note">Mapbox token not configured; showing the accessible visual map fallback.</p>}<p className="map-note">Map shows live provider results in the active search scope. Coverage may vary by provider.</p></div>;
 }
 
 export default function Home() {
-  const [prompt, setPrompt] = useState("Find every business in ZIP 77096 that likely buys recurring cleaning, paper, restaurant, or maintenance supplies");
+  const [prompt, setPrompt] = useState("Find restaurants in ZIP 77096 and identify their POS/payment processor and whether website ordering is first-party or redirects to DoorDash, Uber Eats, ChowNow, or another third party");
   const [zip, setZip] = useState("77096");
   const [quadrant, setQuadrant] = useState("A1");
   const [rep, setRep] = useState("All Reps");
@@ -139,7 +142,7 @@ export default function Home() {
     setPromptError(""); setLoading(true); setNotice(""); setNoticeDetails([]); setShowNoticeDetails(false); setSaved(false); setSelected(null); setAccounts([]); setMeta(null);
     const resolvedZip = resolveAuthoritativeZip(prompt, zip);
     if (resolvedZip.overridden) setZip(resolvedZip.zip);
-    try { const response = await fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, zip: resolvedZip.zip, quadrant, rep }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Live search failed"); setAccounts(data.leads || []); setMeta(data.meta || null); const count = data.leads?.length || 0; const warningState = data.meta?.warnings || {}; setNotice(resolvedZip.overridden ? `Using ZIP ${resolvedZip.zip} from your search prompt. ${count ? `${count} live businesses loaded.` : "No live businesses matched this ZIP and search."}` : (count ? `${count} live businesses loaded.` : "No live businesses matched this ZIP and search.")); setNoticeDetails(warningState.details || []); }
+    try { const response = await fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt, zip: resolvedZip.zip, quadrant, rep }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Live search failed"); setAccounts(data.leads || []); setMeta(data.meta || null); const count = data.leads?.length || 0; const warningState = data.meta?.warnings || {}; const categoryAudit = data.meta?.categoryAudit || {}; const categoryLabel = categoryAudit.requested ? ` ${categoryAudit.requested}` : ""; const uncertain = categoryAudit.probable || 0; const variability = data.meta?.coverageIntent ? " Live provider coverage may vary." : ""; const resultMessage = count ? `${count} live${categoryLabel} businesses loaded.${uncertain ? ` ${uncertain} require category verification.` : ""}${variability}` : "No live businesses matched this ZIP and search."; setNotice(resolvedZip.overridden ? `Using ZIP ${resolvedZip.zip} from your search prompt.${resultMessage}` : resultMessage); setNoticeDetails(warningState.details || []); }
     catch (error) { setNotice("Live search could not be completed."); setNoticeDetails([{ code: "search-failure", summary: error.message || "The live search provider returned an error.", details: "Try again or adjust the ZIP, quadrant, or search terms." }]); } finally { setLoading(false); }
   };
 

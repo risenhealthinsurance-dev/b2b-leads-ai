@@ -14,6 +14,8 @@ const {
   getMapCoordinates,
   normalizeZip,
   requiresMissingWebsiteIntent,
+  requestedCategoryFromPrompt,
+  classifyCategoryMatch,
 } = require("../lib/search-contract.cjs");
 const { validateSearchPrompt } = require("../lib/search-validation.cjs");
 const { resolveAuthoritativeZip, buildWarningDetails } = require("../lib/search-contract.cjs");
@@ -95,29 +97,28 @@ test("normalizes a lead with stable identity and safe public-intelligence defaul
   assert.equal(result.quadrant, "A1");
   assert.equal(result.enrichment_status, "partial");
   assert.deepEqual(result.sources, []);
-  assert.equal(result.amazon_business_status, "Unknown — verify conversationally.");
+  assert.equal(result.amazon_business_status, undefined);
 });
 
-test("falls back to safe ZIP and supply intent extraction when the model returns no JSON", () => {
-  const result = fallbackExtractFromPrompt("Find every business in ZIP 77096 that likely buys recurring cleaning, paper, restaurant, or maintenance supplies");
+test("falls back to safe ZIP extraction when the model returns no JSON", () => {
+  const result = fallbackExtractFromPrompt("Find restaurants in ZIP 77096 and identify their POS and website ordering");
 
   assert.equal(result.location, "ZIP 77096");
   assert.equal(result.category, "businesses");
   assert.equal(result.zip, "77096");
-  assert.equal(result.coverage_intent, true);
-  assert.deepEqual(result.supply_categories, ["cleaning", "paper", "restaurant", "maintenance"]);
+  assert.equal(result.coverage_intent, false);
+  assert.equal(result.intent, "");
 });
 
 test("explicit request context overrides contradictory model extraction", () => {
   const result = resolveSearchExtraction({
-    prompt: "Find every business in ZIP 77096 that buys cleaning supplies",
+    prompt: "Find restaurants in ZIP 77096 and identify their POS",
     extracted: {
       location: "34950",
       category: "businesses",
       zip: "34950",
       quadrant: "B2",
       rep: "James R.",
-      supply_categories: [],
     },
     context: { zip: "77096", quadrant: "A1", rep: "All Reps" },
   });
@@ -126,15 +127,14 @@ test("explicit request context overrides contradictory model extraction", () => 
   assert.equal(result.zip, "77096");
   assert.equal(result.quadrant, "A1");
   assert.equal(result.rep, "All Reps");
-  assert.deepEqual(result.supply_categories, ["cleaning"]);
+  assert.equal(result.intent, "");
 });
 
-test("builds a scoped maps query from supply intent instead of generic businesses", () => {
+test("builds a scoped maps query from geographic context", () => {
   const query = buildSearchQuery({
     category: "businesses",
     location: "ZIP 77096",
     context: { zip: "77096", quadrant: "A1" },
-    supplyCategories: ["cleaning", "paper", "maintenance"],
   });
 
   assert.equal(query, "businesses in ZIP 77096");
@@ -179,4 +179,25 @@ test("filters discovery results that contradict the authoritative ZIP", () => {
 test("never fabricates map coordinates when a lead has no coordinates", () => {
   assert.deepEqual(getMapCoordinates({ coordinates: { latitude: 29.7, longitude: -95.4 } }, 0), [-95.4, 29.7]);
   assert.equal(getMapCoordinates({}, 5), null);
+});
+
+test("classifies category-specific records conservatively", () => {
+  assert.equal(requestedCategoryFromPrompt("Find all restaurants in ZIP 34950"), "restaurant");
+  assert.equal(classifyCategoryMatch({ category: "Restaurant", title: "Example" }, "restaurant").categoryMatch, "verified");
+  assert.equal(classifyCategoryMatch({ title: "Bluebird Bistro" }, "restaurant").categoryMatch, "probable");
+  assert.equal(classifyCategoryMatch({ title: "Example Business", category: "Accounting" }, "restaurant").categoryMatch, "unverified");
+});
+
+test("reports category audit and live request metadata", () => {
+  const meta = buildSearchMeta({
+    location: "ZIP 34950",
+    category: "restaurants",
+    context: { zip: "34950", quadrant: "A1" },
+    leads: [{ category_match: "verified", enrichment_status: "enriched" }, { category_match: "probable", enrichment_status: "partial" }],
+    categoryAudit: { requested: "restaurant", returned: 2, verified: 1, probable: 1, excludedUnverified: 3 },
+    requestMeta: { id: "req-1", providerResultCount: 8, finalResultCount: 2 },
+  });
+  assert.deepEqual(meta.categoryAudit, { requested: "restaurant", returned: 2, verified: 1, probable: 1, excludedUnverified: 3 });
+  assert.equal(meta.request.id, "req-1");
+  assert.equal(meta.request.finalResultCount, 2);
 });

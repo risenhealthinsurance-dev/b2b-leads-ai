@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { analyzeLead, extractDataFromPrompt } from "@/lib/ai";
 import { searchMapsViaSerper } from "@/lib/serper";
 import { inspectWebsites } from "@/lib/website";
 import searchContract from "@/lib/search-contract.cjs";
 
-const { normalizeSearchContext, buildSearchMeta, buildWarningState, buildWarningDetails, filterLeadsToContext, normalizeCoordinates, normalizeLeadRecord, resolveSearchExtraction } = searchContract;
+const { normalizeSearchContext, buildSearchMeta, buildWarningState, buildWarningDetails, filterLeadsToContext, normalizeCoordinates, normalizeLeadRecord, resolveSearchExtraction, requestedCategoryFromPrompt, classifyCategoryMatch } = searchContract;
 
 function buildValidationError(detail) {
   const error = new Error(`Error: Invalid input validation failed - ${detail}`);
@@ -36,6 +37,8 @@ export async function POST(request) {
   console.log("[API] Received POST /api/search request.");
 
   try {
+    const requestId = randomUUID();
+    const searchStartedAt = new Date().toISOString();
     const body = await getRequestBody(request);
     const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
 
@@ -80,7 +83,7 @@ export async function POST(request) {
     console.log("[API] Starting Serper search step.");
     let localResults;
     try {
-      localResults = await searchMapsViaSerper(category, location, context, resolved.supply_categories);
+      localResults = await searchMapsViaSerper(category, location, context);
     } catch (error) {
       console.error("[API] searchMapsViaSerper failed:", error);
       const status = normalizeStatus(error);
@@ -94,7 +97,15 @@ export async function POST(request) {
       }, { status });
     }
 
-    const resultsArray = filterLeadsToContext(Array.isArray(localResults) ? localResults : [], context);
+    const providerResultCount = Array.isArray(localResults) ? localResults.length : 0;
+    const scopedResults = filterLeadsToContext(Array.isArray(localResults) ? localResults : [], context);
+    const outOfScopeResults = providerResultCount - scopedResults.length;
+    const requestedCategory = requestedCategoryFromPrompt(prompt);
+    const classifiedResults = scopedResults.map((lead) => ({ lead, ...classifyCategoryMatch(lead, requestedCategory) }));
+    const categoryFiltered = requestedCategory ? classifiedResults.filter((item) => item.categoryMatch === "unverified").length : 0;
+    const resultsArray = requestedCategory
+      ? classifiedResults.filter((item) => item.categoryMatch !== "unverified").map((item) => item.lead)
+      : scopedResults;
     console.log(`[API] Serper returned ${resultsArray.length} raw results.`);
 
     let filteredLeads;
@@ -109,6 +120,10 @@ export async function POST(request) {
     const websites = filteredLeads.map(lead => lead.website || lead.link || "");
     const inspections = await inspectWebsites(websites, 5);
     warnings.websiteFailures = inspections.filter((inspection) => inspection?.status === "unavailable" || inspection?.status === "http_error").length;
+    warnings.categoryFiltered = categoryFiltered;
+    warnings.outOfScopeResults = outOfScopeResults;
+    warnings.liveProviderVariability = true;
+    warnings.coordinatesMissing = filteredLeads.filter((lead) => !normalizeCoordinates(lead)).length;
     if (warnings.websiteFailures > 0) warnings.messages = buildWarningState(warnings).messages;
     const formattedLeads = await Promise.all(filteredLeads.map(async (lead, index) => {
       const formattedLead = {
@@ -142,6 +157,10 @@ export async function POST(request) {
         sources,
         freshness: new Date().toISOString(),
         ...intelligence,
+        requested_category: requestedCategory,
+        category_match: requestedCategory ? classifyCategoryMatch(lead, requestedCategory).categoryMatch : "verified",
+        category_evidence: requestedCategory ? classifyCategoryMatch(lead, requestedCategory).categoryEvidence : "Broad business search",
+        category_source: requestedCategory ? classifyCategoryMatch(lead, requestedCategory).categorySource : "search-intent",
       }, index, context);
       normalized.enrichment_status = websiteInspection?.status === "available" ? "enriched" : "partial";
       return normalized;
@@ -153,11 +172,16 @@ export async function POST(request) {
     }
     warnings.messages = buildWarningState(warnings).messages;
     warnings.details = buildWarningDetails({ ...warnings, extractionDetail: extracted?._warning });
+    const categoryCounts = formattedLeads.reduce((counts, lead) => {
+      const key = lead.category_match || "unverified";
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, { verified: 0, probable: 0, unverified: 0 });
 
     // Return leads and metadata for the frontend
     return NextResponse.json({
       leads: formattedLeads,
-      meta: buildSearchMeta({ location, category, intent, context, leads: formattedLeads, warnings, source: { extraction: extracted?._warning ? "deterministic-fallback" : "openrouter", enrichment: warnings.enrichmentFailures || warnings.websiteFailures ? "partial" : "openrouter", intentMode: requiresMissingWebsite ? "strict-no-website" : "broad" } })
+      meta: buildSearchMeta({ location, category, intent, context, leads: formattedLeads, warnings, categoryAudit: { requested: requestedCategory || "", returned: formattedLeads.length, verified: categoryCounts.verified, probable: categoryCounts.probable, excludedUnverified: categoryFiltered }, requestMeta: { id: requestId, startedAt: searchStartedAt, completedAt: new Date().toISOString(), providerResultCount, scopedResultCount: scopedResults.length, finalResultCount: formattedLeads.length, excludedOutOfScope: outOfScopeResults }, source: { extraction: extracted?._warning ? "deterministic-fallback" : "openrouter", enrichment: warnings.enrichmentFailures || warnings.websiteFailures ? "partial" : "openrouter", intentMode: requiresMissingWebsite ? "strict-no-website" : "broad" } })
     });
   } catch (error) {
     const status = normalizeStatus(error);
