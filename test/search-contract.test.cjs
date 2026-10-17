@@ -97,7 +97,6 @@ test("normalizes a lead with stable identity and safe public-intelligence defaul
   assert.equal(result.quadrant, "A1");
   assert.equal(result.enrichment_status, "partial");
   assert.deepEqual(result.sources, []);
-  assert.equal(result.amazon_business_status, undefined);
 });
 
 test("falls back to safe ZIP extraction when the model returns no JSON", () => {

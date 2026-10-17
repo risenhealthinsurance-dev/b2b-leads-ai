@@ -14,6 +14,24 @@ function buildValidationError(detail) {
   return error;
 }
 
+function buildSalesOpportunity(inspection = {}, intelligence = {}) {
+  const ordering = intelligence || {};
+  const triggers = Array.isArray(inspection.sales_triggers) ? inspection.sales_triggers : [];
+  return {
+    payment_processor: ordering.detected_payment_setup || inspection.payment_signals?.join(", ") || "Unknown",
+    payment_processor_confidence: inspection.payment_signals?.length ? "medium" : "low",
+    payment_evidence: ordering.payment_processor_evidence?.length ? ordering.payment_processor_evidence : inspection.payment_signals || [],
+    ordering_model: ordering.website_ordering_status || "Not detected",
+    ordering_platform: ordering.ordering_platform || inspection.ordering_platforms?.join(", ") || "Unknown",
+    delivery_capability: ordering.delivery_capability || "Not detected",
+    delivery_evidence: ordering.ordering_evidence?.length ? ordering.ordering_evidence : inspection.ordering_signals || [],
+    sales_triggers: triggers,
+    recommended_pitch: ordering.ordering_sales_opportunity || ordering.payment_processing_opportunity || "Verify the current POS and online ordering setup before pitching.",
+    unknowns_to_verify: ["Exact processing rates", "Contract or exclusivity terms", "Actual transaction volume"],
+    opportunity_score: Number(inspection.opportunity_score) || 35
+  };
+}
+
 function normalizeStatus(error) {
   if (typeof error?.status === "number") return error.status;
   if (typeof error?.statusCode === "number") return error.statusCode;
@@ -157,6 +175,7 @@ export async function POST(request) {
         sources,
         freshness: new Date().toISOString(),
         ...intelligence,
+        sales_opportunity: buildSalesOpportunity(websiteInspection, intelligence.payment_and_ordering_intelligence),
         requested_category: requestedCategory,
         category_match: requestedCategory ? classifyCategoryMatch(lead, requestedCategory).categoryMatch : "verified",
         category_evidence: requestedCategory ? classifyCategoryMatch(lead, requestedCategory).categoryEvidence : "Broad business search",
